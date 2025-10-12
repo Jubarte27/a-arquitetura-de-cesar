@@ -1,0 +1,79 @@
+
+;
+; Programa fornecido pelo professor, em 2024/2,
+; para realizar alguns testes na implementação
+; do trabalho do CESAR
+;
+
+;==========================================================================
+;	FF80 - FFFF: área reservada para os periféricos
+;==========================================================================
+	org	hff80
+
+; Acesso em 16 bits
+	org	hffbe
+IVET:	dw	0		; Vetor de interrupção
+
+; Acesso em 8 bits
+	org	hffc0
+	dab	[23]
+TIMDT:	db	0		; Registro de programação do timer
+INTS:	db	0		; INTERRUPT STATUS: IP x x x . x x IPStec IPStim
+INTE:	db	0		; INTERRUPT ENABLE: IE x x x . x x IEStec IEStim
+TECST:	db	0		; Status do teclado
+TECDT:	db	0		; Dado do teclado
+VISOR:	dab	[36]		; Portas de acesso ao visor
+
+STACK:	EQU	H8000
+
+	org	0	
+	mov	#STACK,R6
+	clr	TECST
+	clr	INTS
+	clr	INTE
+	
+	mov	#instrucoes,r0
+	jsr	r7,h8000
+	
+	hlt
+	
+END_OK:		equ  H0000	; 0
+END_ERROR:	equ  H0001	; 0
+CLEAR:		equ  H0100	; start - size
+VISOR_OFF:	equ  H0200	; 0
+VISOR_ON:	equ  H0201	; 0
+TEXT:		equ  H0300	; start - stringz[]
+DELAY:		equ  H0400	; WORD_tempo
+COPY:		equ  H0500	; start - size
+PASTE:		equ  H0501	; start
+LOOP:		equ  H0600	; 0
+
+instrucoes:
+	daw	CLEAR
+	dab	0,36
+	
+	daw	TEXT
+	dab	10, 'INF - 01108', 0
+	
+	daw	VISOR_OFF
+	daw	DELAY,500
+	daw	VISOR_ON
+	
+	daw	DELAY,500
+	
+	daw	COPY
+	dab	10, 3
+	daw	PASTE
+	dab	25
+	
+	daw	CLEAR
+	dab	10,11
+	
+	daw	DELAY,500
+	daw	LOOP
+	
+	
+	
+	
+	
+	

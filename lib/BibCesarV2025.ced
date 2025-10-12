@@ -1,0 +1,393 @@
+;---------------------------------------------------------------
+;
+; INF.UFRGS.BR - Arquitetura de Computadores 1 - CESAR16i
+;
+; Derivado de BibCesarV5.ced de 07/01/2003
+; Atualizado por Marcelo Johann em 23/05/2025
+; - atualizados enderecos de inicio para Cesar16i
+; - reformatados os comentarios
+; - incluidas rotinas de escrever decimais (por Sergio Cechin)
+
+;---------------------------------------------------------------
+;
+; Inicializacao do apontador da pilha
+; para que a pilha fique acima (antes) da area
+; de memoria mapeada para entrada e saida;
+; ESTAS DUAS INSTRUCOES DEVEM SER MANTIDAS AQUI !
+
+          ORG 0             ; primeira instrucao do programa
+          MOV #65408,R6     ; aponta SP para 65408 - hFF80
+          
+; ou inicializar pilha com #h8000 quando a metade
+; superior da memoria for usada para bib/dados/professor
+;          MOV #32768,R6     ; aponta SP para 32768 - h8000
+
+
+;>-------------------------------------------------<
+;>>                                               <<
+;>>>                                             <<<
+;>>>> INSERIR AQUI O CODIGO DE SEU PROGRAMA !!! <<<<
+;>>>                                             <<<
+;>>                                               <<
+;>-------------------------------------------------<
+
+;
+; BEGIN TEST PROGRAM - ver variaveis logo abaixo
+;
+          JSR R7,CLEAN_FAST
+          
+; testa escrita de mensagem
+          MOV #MSG1,R1
+          MOV #MSG2,R0
+          SUB R1,R0
+          MOV #VISOR,R2
+          JSR R7, WRITE_TEXT
+          
+; testa escrita de numero positivo
+          MOV	#1200,-(R6)		; n
+          MOV	#NUMERO,-(R6)	; s
+          JSR	R7,int2str
+          ADD	#4,R6
+          MOV #NUMERO,R1
+          MOV #NUMLEN,R0
+          MOV #VISOR+6,R2
+          JSR R7, WRITE_TEXT
+          
+; testa escrita de numero negativo
+          MOV	#-9736,-(R6)		; n
+          MOV	#NUMERO,-(R6)	; s
+          JSR	R7,int2str
+          ADD	#4,R6
+          MOV #NUMERO,R1
+          MOV #NUMLEN,R0
+          MOV #VISOR+12,R2
+          JSR R7, WRITE_TEXT
+          
+          HLT
+          
+; TEST DATA
+MSG1:     DAB 'Teste'
+MSG2:
+NUMERO:		DAB	'1234567'   ; cinco digitos mais sinal e \0 no fim
+NUMLEN:   EQU 6           ; nao considera o \0 para o visor
+
+; CONSTANTES
+VISOR:    EQU 65500
+
+; END TEST PROGRAM
+
+;---------------------------------------------------------------
+;
+; Aqui inicia a BIBCESAR, a partir de 64000 (hFA00)
+; mantendo compatibilidade com qqr codigo antigo,
+; e acrescentando novas rotinas por nome depois no final
+;
+;---------------------------------------------------------------
+
+CLEANSHORT:   EQU H0FA00
+MULTIPLY16:   EQU H0FA1E
+CLEAN_FAST:   EQU H0FA50
+DIVIDE3216:   EQU H0FAE6
+WRITE_TEXT:   EQU H0FB22
+
+;---------------------------------------------------------------
+;
+; Subrotina iterativa para "limpar" o visor - inicia em 64000
+;
+; Chamada da subrotina:
+;
+; JSR R7,64000             ; (ou H0FA00)
+; JSR R7,CLEANSHORT        ; chamada por nome usando EQU
+;
+          ORG 64000         ; ajusta endereco de inicio
+          MOV R0,-(R6)      ; salva R0 na pilha
+          MOV R1,-(R6)      ; salva R1 na pilha
+          MOV #65500,R1     ; move end. do visor p/R1
+          MOV #36,R0        ; move 36 para contador
+          CLR (R1)          ; limpa 1 LED do visor
+          INC R1            ; aponta p/LED seguinte
+          SOB R0,6          ; subtrai 1 do contador
+                            ; se <> 0, repete o laco
+          MOV (R6)+,R1      ; restaura R1
+          MOV (R6)+,R0      ; restaura R0
+          RTS R7            ; retorna ao ponto de chamada
+          
+;---------------------------------------------------------------
+;
+; Multiplicar 2 inteiros positivos de 16 bits - inicia em 64030
+;
+; Chamada da subrotina:
+;
+; MOV #multiplicando,R0    ; multiplicando no R0
+; MOV #multiplicador,R1    ; multiplicador no R1
+; JSR R7,64030             ; (ou H0FA1E)
+;
+          ORG 64030         ; ajusta endereco de inicio
+          MOV R2,-(R6)      ; salva R2 na pilha
+          MOV R3,-(R6)      ; salva R3 na pilha
+          MOV #16,R2        ; inicializa contador
+          CLR R3            ; limpa R3
+          ROR R1            ; lsb do multiplicad. em C
+          BCC 2             ; se era zero, nao soma
+          ADD R0,R3         ; acumula multiplicando
+                            ; no produto parcial
+          ROR R3            ; lsb de R3 vai para C
+          BCC 4             ; se era zero, sai do laco
+          ADD #32768,R1     ; soma 1 ao bit 15 de R1
+          SOB R2, 16        ; decrementa contador e
+                            ; repete se <> 0
+          MOV R3,R0         ; resultado de R3 para R0
+          MOV (R6)+,R3      ; restaura R3
+          MOV (R6)+,R2      ; restaura R2
+          TST R0            ; se R0 <> 0
+          BNE 2             ; vai indicar estouro
+          CCC V             ; senao, desliga V
+          RTS R7            ; retorna ao progr. princ.
+          SCC V             ; liga indicador: estouro
+          RTS R7            ; retorna ao ponto de chamada
+
+;---------------------------------------------------------------
+;
+; Subrotina rapida para limpar visor - inicia em 64080
+;
+; Chamada da subrotina:
+;
+; JSR R7,64080             ; (ou H0FA50)
+;
+          ORG 64080         ; ajusta endereco de inicio
+          CLR 65500         ; limpa LED 00
+          CLR 65501         ; limpa LED 01
+          CLR 65502         ; limpa LED 02
+          CLR 65503         ; limpa LED 03
+          CLR 65504         ; limpa LED 04
+          CLR 65505         ; limpa LED 05
+          CLR 65506         ; limpa LED 06
+          CLR 65507         ; limpa LED 07
+          CLR 65508         ; limpa LED 08
+          CLR 65509         ; limpa LED 09
+          CLR 65510         ; limpa LED 10
+          CLR 65511         ; limpa LED 11
+          CLR 65512         ; limpa LED 12
+          CLR 65513         ; limpa LED 13
+          CLR 65514         ; limpa LED 14
+          CLR 65515         ; limpa LED 15
+          CLR 65516         ; limpa LED 16
+          CLR 65517         ; limpa LED 17
+          CLR 65518         ; limpa LED 18
+          CLR 65519         ; limpa LED 19
+          CLR 65520         ; limpa LED 20
+          CLR 65521         ; limpa LED 21
+          CLR 65522         ; limpa LED 22
+          CLR 65523         ; limpa LED 23
+          CLR 65524         ; limpa LED 24
+          CLR 65525         ; limpa LED 25
+          CLR 65526         ; limpa LED 26
+          CLR 65527         ; limpa LED 27
+          CLR 65528         ; limpa LED 28
+          CLR 65529         ; limpa LED 29
+          CLR 65530         ; limpa LED 30
+          CLR 65531         ; limpa LED 31
+          CLR 65532         ; limpa LED 32
+          CLR 65533         ; limpa LED 33
+          CLR 65534         ; limpa LED 34
+          CLR 65535         ; limpa LED 35
+          RTS R7            ; retorna ao ponto de chamada
+
+;---------------------------------------------------------------
+;
+; Dividir int. positivo de 32 bits por um de 16 bits - inicia em 64230
+;
+; Chamada da subrotina:
+;
+; MOV #msbitsdividendo,R0  ; 16 bits mais significativos do dividendo
+; MOV #lsbitsdividendo,R1  ; 16 bits menos significativos do dividendo
+; MOV #divisor,R2          ; divisor (16 bits)
+; JSR R7,64230             ; (ou H0FAE6)
+;
+          ORG 64230         ; ajusta endereco de inicio
+__S401:   TST R2            ; testa divisor
+          BNE 2             ; se <> zero, continua
+          CCC V             ; indica divisao por zero
+          RTS R7            ; retorna ao ponto de chamada
+;
+__S402:   CMP R0,R2         ; testa se dividendo(msb)
+                            ; e' >= que o divisor
+          BCC 44            ; se for, indicar estouro
+          NOP               ; note: BCC equivale a um
+          NOP               ; BGE para int. positivos
+;
+__S403:   MOV R3,-(R6)      ; salva R3 na pilha
+          MOV R4,-(R6)      ; salva R4 na pilha
+          MOV R5,-(R6)      ; salva R5 na pilha
+          MOV R0,R3         ; copia dividendo para
+          MOV R1,R4         ; R3 e R4 (=q no final)
+          MOV #16,R5        ; inicializa contador
+          ASL R4            ; desloca dividendo p/a
+          ROL R3            ; esquerda e abre espaco
+          BCS 4             ; p/um bit do quociente
+          CMP R3,R2         ; se n+1 msbits do divid.
+          BCS 4             ; maiores que divisor (= BLT p/inteiros positivos)
+          SUB R2,R3         ; subtrai divisor e
+          INC R4            ; ajusta bit do quociente
+          SOB R5,16         ; decr. R5; se <>0, repete
+          MOV R3,R1         ; copia resto para R1
+          MOV R4,R0         ; copia quociente p/R0
+          MOV (R6)+,R5      ; restaura
+          MOV (R6)+,R4      ; registradores
+          MOV (R6)+,R3      ; de trabalho
+          CCC V Z           ; limpa cod. de condicao
+          RTS R7            ; retorna ao ponto de chamada
+;
+__S404:   SCC V             ; indica overflow e nao
+          CCC Z             ; divisao por zero
+          RTS R7            ; retorna ao ponto de chamada
+
+;---------------------------------------------------------------
+;
+; Subrotina para escrever texto no visor - inicia em 64290
+;
+; Chamada da subrotina:
+;
+; MOV #tammensagem,R0      ; tamanho da mensagem (em caracteres)
+; MOV #endmensagem,R1      ; endereco da mensagem a ser escrita no visor
+; MOV #endvisor,R2         ; endereco do LED onde deve iniciar a mensagem
+; JSR R7,64290             ; (ou H0FB22)
+;
+;
+          ORG 64290         ; ajusta endereco de inicio
+__S501:   MOV (R1),R3       ; coloca 2 caracteres em R3
+          ASR R3            ; alinha primeiro caractere
+          ASR R3            ; a direita do registrador,
+          ASR R3            ; porque quando se escreve
+          ASR R3            ; na memoria a partir do
+          ASR R3            ; endereco 65500 apenas o byte
+          ASR R3            ; menos significativo e' escrito
+          ASR R3            ; na posicao correspondente
+          ASR R3            ; a um LED do visor
+          MOV R3,(R2)       ; move para o visor
+          SOB R0,-3         ; se ja moveu todo o texto,
+          RTS R7            ; retorna ao ponto de chamada
+          NOP               ; senao, vai mover o segundo
+          NOP               ; caractere da mesma palavra
+__S502:   INC R2            ; aponta para proximo LED
+          BEQ 19            ; fim do visor - volta ao LED 00
+          MOV (R1)+,R3      ; mesmos 2 caracteres em R3 e
+                            ; incrementa apontador do texto
+          MOV R3,(R2)       ; desta vez, move o segundo byte
+          SOB R0,-3         ; se ja moveu todo o texto,
+          RTS R7            ; retorna ao ponto de chamada
+          NOP
+          NOP
+          INC R2            ; senao, aponta proximo LED
+          BNE -42           ; e repete o laco
+                            ; fim do visor - volta ao LED 00
+__S503:   MOV #65500,R2     ; aponta para primeiro LED
+          BR  -48           ; volta a escrever no visor
+;
+__S504:   MOV #65500,R2     ; aponta para primeiro LED
+          BR  -25           ; volta a escrever no visor
+          
+;---------------------------------------------------------------
+;
+; FIM DAS ROTINAS COM ENDERECO FIXO
+
+;---------------------------------------------------------------
+;
+; INICIO DAS NOVAS ROTINAS, CHAMADAS POR NOME (2025)
+
+
+;**********************************************************
+; void int2str(char *s, uint n) {
+;	2(R6) -> s -> R1
+;	4(R6) -> n -> R2
+;
+;**********************************************************
+
+int2str:
+	MOV	2(R6),R1	; s
+	MOV	4(R6),R2	; n
+	
+	BPL	EhPositivo	; 	if ( n < 0 ) {
+
+	NEG	R2			; 		n = -n;
+	
+	MOV	-1(R1),R0	; 		*s++ = '-';
+	AND	#HFF00,R0
+	OR	#'-',R0
+	MOV	R0,-1(R1)
+	INC	R1
+					; 	}
+
+EhPositivo:
+	MOV	R2,-(R6)	; 	uint2str(s,n);
+	MOV	R1,-(R6)
+	JSR	R7,uint2str
+	ADD	#4,R6
+	
+	RTS	R7			; }
+	
+
+;**********************************************************
+; void uint2str(char *s, uint n)
+;	2(R6) -> s -> R1
+;	4(R6) -> n -> R2
+;
+;	Lacos  -> R5
+;	pTab10 -> R4
+;	dig    -> R3
+;
+;**********************************************************
+Tab10:		DAW	10000, 1000, 100, 10
+uint2str:
+	MOV	2(R6),R1	; R1 = s
+	MOV	4(R6),R2	; R2 = n
+
+	MOV	#Tab10,R4	; pTab10 = Tab10;
+	MOV	#4,R5		; Lacos = 4;
+	
+Loop:				; do {
+	MOV	#'0',R3		; 	dig = '0';
+
+LoopInterno:
+	CMP	R2,(R4)		; 	while (n >= *pTab10) {
+	BLT	EhMenor
+	INC	R3			; 		++dig;
+	SUB	(R4),R2		; 		n -= *pTab10;
+	JMP	LoopInterno	; 	}
+
+EhMenor:
+	MOV	-1(R1),R0	; 	*s++ = dig;
+	AND	#HFF00,R0
+	OR	R3,R0
+	MOV	R0,-1(R1)
+	INC	R1
+	
+	ADD	#2,R4		; 	++pTab10;
+
+	SOB	R5,Loop		; } while (--Lacos);
+	
+	ADD	#'0',R2		; *s++ = n + '0';
+	MOV	-1(R1),R0
+	AND	#HFF00,R0
+	OR	R2,R0
+	MOV	R0,-1(R1)
+	INC	R1
+	
+	MOV	-1(R1),R0	; *s++ = '\0';
+	AND	#HFF00,R0
+	MOV	R0,-1(R1)
+	
+	RTS	R7
+
+
+;---------------------------------------------------------------
+;
+; Identificacao da versao da biblioteca - e' exibida no visor
+;
+          ORG 65500         ; ajusta endereco de inicio (LED 01 do visor)
+          DAB 'BIBCESAR.CED'
+          DAB ' VERSAO 2025'
+          DAB ' 23/05/2025'
+
+; END OF FILE
+
