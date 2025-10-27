@@ -73,6 +73,6 @@ EhMenor:
 Stack:
 
 	org	65500
-String:		DAB	'123456'
+String:		DB	'123456'
 
 

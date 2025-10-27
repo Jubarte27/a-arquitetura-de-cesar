@@ -1,19 +1,19 @@
 
 ;
 ;**************************************************************************************************
-;	- Programa para comparar o comportamento da leitura de teclado de forma direta e usando a interrup√ß√£o
+;	- Programa para comparar o comportamento da leitura de teclado de forma direta e usando a interrupÁ„o
 ;	- O programa verifica se tem tecla.
 ;		- Se tiver, colocar no visor;
-;		- Se n√£o tiver, entra em um wait de 10 segundos
-;	- No laco principal tem duas fun√ß√µes:
-;		1. DisplayTeclado: l√™ o teclado e coloca no visor
-;		2. Wait: fornece a temporiza√ß√£o de 10 segundos
-;	- S√£o duas vers√µes do programa
-;		1. Vers√£o sem interrup√ß√£o -> mostra-se que ser√£o perdidas teclas, mesmo com um buffer no PP
-;		2. Vers√£o com interrup√ß√£o -> mostra-se que as teclas podem ser armazenadas em um buffer, na ISR
-;	- Vers√£o 1
-;		<<1>> Configura√ß√£o da interrup√ß√£o
-;		<<2>> Configura√ß√£o da leitura de teclado
+;		- Se n„o tiver, entra em um wait de 10 segundos
+;	- No laco principal tem duas funÁıes:
+;		1. DisplayTeclado: lÍ o teclado e coloca no visor
+;		2. Wait: fornece a temporizaÁ„o de 10 segundos
+;	- S„o duas versıes do programa
+;		1. Vers„o sem interrupÁ„o -> mostra-se que ser„o perdidas teclas, mesmo com um buffer no PP
+;		2. Vers„o com interrupÁ„o -> mostra-se que as teclas podem ser armazenadas em um buffer, na ISR
+;	- Vers„o 1
+;		<<1>> ConfiguraÁ„o da interrupÁ„o
+;		<<2>> ConfiguraÁ„o da leitura de teclado
 ;		
 ;
 ;**************************************************************************************************
@@ -21,13 +21,13 @@
 
 
 ;==========================================================================
-; √Årea Reservada
+; ¡rea Reservada
 
 ; Acesso em 16 bits
 		org		hff80
 STACK:
-		daw		[31]		; √Årea reservada
-IVET:	dw		0			; Vetor de interrup√ß√£o
+		daw		[31]		; ¡rea reservada
+IVET:	dw		0			; Vetor de interrupÁ„o
 
 ; Acesso em 8 bits
 		dab		[24]
@@ -40,75 +40,36 @@ VISOR:	dab		[36]		; Portas de acesso ao visor
 
 ;==========================================================================
 ;
-org		0
-INI:
-mov		#STACK,r6
-clr		INTS			; Reset pedidos de interrup√ß√£o
-clr 	TECST			; Reset estado do hardware do teclado
-mov		#isr,IVET		; Set Interrupt Service Rotine
-
-
-mov		#VISOR,POSICAO		; POSICAO = VISOR
-jsr		r7,ClearDisplay
+		org		0
 		
+;
+;**************************************************************************************************
+; Inicializa o processador e o hardware		
+		mov		#STACK,r6
+		clr		INTS			; Reset pedidos de interrupÁ„o
+		clr 	TECST			; Reset estado do hardware do teclado
+		mov		#isr,IVET		; Set Interrupt Service Rotine
+		
+;
+;**************************************************************************************************
+; Inicializa variaveis de operaÁ„o das rotinas do programa
+		mov		#VISOR,POSICAO		; POSICAO = VISOR
+		jsr		r7,ClearDisplay
+		
+;
+;**************************************************************************************************
+; Programa principal
 
-mov		#h82,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
+; <<1>> ConfiguraÁ„o da interrupÁ„o
+		mov		#h00,INTE		; Sem interrupÁ„o
+;		mov		#h82,INTE		; Com interrupÁ„o de teclado - Habilita as interrupÁıes necess·rias: TECLADO=0x82   TIMER=0x81
 
 main:
 		jsr		r7,DisplayTeclado
 		jsr		r7,Wait
 		jmp		main
 		
-DisplayTimers:
-		rts 	r7
-
-DisplaySecTimer:; r0 = totalSec, r1 = display_section[5]
-		mov 	r0, r2
-
-		rts		r7
-
-Tab10:		DAW	10000, 1000, 100, 10
-uint2str:
-		MOV	2(R6),R1	; R1 = s
-		MOV	4(R6),R2	; R2 = n
-
-		MOV	#Tab10,R4	; pTab10 = Tab10;
-		MOV	#4,R5		; Lacos = 4;
 		
-	Loop:				; do {
-		MOV	#'0',R3		; 	dig = '0';
-
-	LoopInterno:
-		CMP	R2,(R4)		; 	while (n >= *pTab10) {
-		BLT	EhMenor
-		INC	R3			; 		++dig;
-		SUB	(R4),R2		; 		n -= *pTab10;
-		JMP	LoopInterno	; 	}
-
-	EhMenor:
-		MOV	-1(R1),R0	; 	*s++ = dig;
-		AND	#HFF00,R0
-		OR	R3,R0
-		MOV	R0,-1(R1)
-		INC	R1
-		
-		ADD	#2,R4		; 	++pTab10;
-
-		SOB	R5,Loop		; } while (--Lacos);
-		
-		ADD	#'0',R2		; *s++ = n + '0';
-		MOV	-1(R1),R0
-		AND	#HFF00,R0
-		OR	R2,R0
-		MOV	R0,-1(R1)
-		INC	R1
-		
-		MOV	-1(R1),R0	; *s++ = '\0';
-		AND	#HFF00,R0
-		MOV	R0,-1(R1)
-		
-		RTS	R7
-
 ;
 ;**************************************************************************************************
 ; Le teclado e coloca no visor
@@ -163,22 +124,35 @@ CD_Loop:
 		
 ;
 ;**************************************************************************************************
-; Rotinas para a manipula√ß√£o do hardware e interrup√ß√£o (se houver) do teclado
+; Rotinas para a manipulaÁ„o do hardware e interrupÁ„o (se houver) do teclado
 ; TeclaDisponivel	-> Rotina que informa se algo foi digitado
 ; GetTecla			-> Rotina que retorna a tecla digitada
 
-; <<2>> Configura√ß√£o da leitura de teclado
+; <<2>> ConfiguraÁ„o da leitura de teclado
 
 ;
 ; Rotina que informa se algo foi digitado
 ; Retorna R0==0, se nada digitado; R0!=0, se algo digitado
-TeclaDisponivel:	jmp		TeclaDisponivel_2
-
+TeclaDisponivel:	jmp		TeclaDisponivel_1	; -> leitura direta
+;TeclaDisponivel:	jmp		TeclaDisponivel_2	; -> leitura por interrupÁ„o
+;
 ; Rotina que retorna a tecla digitada
-GetTecla:			jmp		GetTecla_2
+GetTecla:			jmp		GetTecla_1
+;GetTecla:			jmp		GetTecla_2
 
+;
+; Vers„o 1 das funÁıes
+TeclaDisponivel_1:
+		mov		TECST,r0
+		rts		r7
+		
+GetTecla_1:
+		mov		TECDT,r0
+		clr		TECST
+		rts		r7
 
-; Vers√£o 2 das fun√ß√µes
+;
+; Vers„o 2 das funÁıes
 TeclaDisponivel_2:
 		and		#h7f,INTE			; IE = 0;
 		
@@ -205,13 +179,14 @@ GetTecla_2:
 		mov		r1,ptOut		
 		
 		or		#h80,INTE			; IE = 1
+		
 		rts		r7
 
 				
 ;
 ;**************************************************************************************************
-; Rotina de INTERRUP√á√ÉO
-; S√≥ ser√° chamada se as interrup√ß√µes estiverem habilitadas
+; Rotina de INTERRUP«√O
+; SÛ ser· chamada se as interrupÁıes estiverem habilitadas
 isr:
 		mov		r0,-(r6)	; Salva registradores
 		mov		r1,-(r6)
@@ -219,19 +194,13 @@ isr:
 		mov		r3,-(r6)
 		mov		r4,-(r6)
 		mov		r5,-(r6)
-isr1:
-		mov		INTS,r0		; Verifica se √© INT do TIMER
-		and		#1,r0
-		beq		isr2
-		jsr		r7,isr_tim	; Tratamento da INT do TIMER
-		and		#hFFFE,INTS	; Desliga bit de INT TIMER
-isr2:
-		mov		INTS,r0		; Verifica se √© INT do TECLADO
+
+		mov		INTS,r0		; Verifica se È INT do TECLADO
 		and		#2,r0
-		beq		isr3
-		jsr		r7,isr_tec	; Tratamento da INT do TECLADO
+		beq		ISR3
+		jsr		r7,ISRtec	; Tratamento da INT do TECLADO
 		and		#hFFFD,INTS	; Desliga bit de INT TECLADO
-isr3:
+ISR3:
 
 		mov		(r6)+,r5	; Retorna os registradores da pilha
 		mov		(r6)+,r4
@@ -243,16 +212,16 @@ isr3:
 		rti					; Return From Interrupt
 
 
-; Tratamento das interrup√ß√µes de teclado
-isr_tec:
-		tst		TECST				; if (Tecla est√° disponivel?) {
-		beq		isr_tec_end
+; Tratamento das interrupÁıes de teclado
+ISRtec:
+		tst		TECST				; if (Tecla est· disponivel?) {
+		beq		ISRtec1
 		
 		mov		ptIn,r2				; 		p = (in+1)&0x1F
 		inc		r2
 		and		#h1F,r2
 		cmp		r2,ptOut			; 		if (p!=out) { // Verifica se o BUFFER ESTA CHEIO
-		beq		isr_tec_2
+		beq		ISRtec_2
 		
 		mov		ptIn,r1				;				*in = TECLA
 		dec		r1
@@ -264,27 +233,29 @@ isr_tec:
 		mov		r2,ptIn				;				in = p
 									; 		}
 
-isr_tec_2:
+ISRtec_2:
 		clr 	TECST				;
 	
-isr_tec_end:	
+ISRtec1:	
 		rts	r7						; }
 	
-
-isr_tim:
-		inc		TICKCNT
-		mov		#1,TICK
-isr_tim_end:
-		rts		r7
 		
-; VAR
-TICKCNT:	dw		0
-TICK:		dw		0
-
-sec_since_start: dw	0
-ms_since_tec: daw	[3]
-laps:		daw		[3]
+		
+;
+;**************************************************************************************************
+; Variaveis do programa
+; Ocupam a memÛria logo apÛs o final do programa		
+;
+POSICAO:	dw		0		; EndereÁo no visor da posiÁ„o atual onde o 'A' est· aparecendo
 
 ptIn:		dw		0
 ptOut:		dw		0
 TEC_BUFFER:	dab		[32]
+
+		
+	
+	
+	
+	
+
+		

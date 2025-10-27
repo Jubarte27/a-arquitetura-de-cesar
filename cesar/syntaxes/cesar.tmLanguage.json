@@ -1,0 +1,56 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Cesar",
+	"patterns": [
+		{
+			"include": "#keywords"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+			{
+				"name": "comment.line.double-slash.cesar",
+				"match": ";[^\n]*"
+			},
+			{
+				"name": "keyword.control.cesar",
+				"match": "\\b(?i)(hlt|ccc|scc|jmp|br|bne|beq|bpl|bmi|bvc|bvs|bcc|bcs|bge|blt|bgt|ble|bhi|bls|jsr|rts)\\b"
+			},
+			{
+				"name": "keyword.control.cesar",
+				"match": "\\b(?i)(sob|clr|not|inc|dec|dec|neg|tst|ror|rol|asr|asl|adc|sbc)\\b"
+			},
+			{
+				"name": "keyword.control.cesar",
+				"match": "\\b(?i)(org|mov|add|sub|cmp|and|or)\\b"
+			},
+			{
+				"name": "support.type.cesar",
+				"match": "\\b(?i)(dab|daw|db|dw)\\b"
+			},
+			{
+				"name": "constant.language.cesar",
+				"match": "\\b(?i)([r][0-7])\\b"
+			},
+			{
+				"name": "constant.numeric.cesar",
+				"match": "\\b[0-9]+\\b"
+			},
+			{
+				"name": "constant.numeric.cesar",
+				"match": "\\b(?i)([h][0-9ABCDEF]+)\\b"
+			},
+			{
+				"name": "entity.name.tag.cesar",
+				"match": "\\b[0-9a-zA-Z_]+\\b(?=:)"
+			},
+			{
+				"name": "variable.other.cesar",
+				"match": "\\b[a-zA-Z_][0-9a-zA-Z_]*\\b"
+			}
+		]
+		}
+	},
+	"scopeName": "source.cesar"
+}

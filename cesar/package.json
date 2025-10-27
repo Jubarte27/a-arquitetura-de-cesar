@@ -1,0 +1,25 @@
+{
+  "name": "cesar",
+  "displayName": "Cesar",
+  "description": "",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "cesar",
+      "aliases": ["Cesar", "cesar"],
+      "extensions": [".ced"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "cesar",
+      "scopeName": "source.cesar",
+      "path": "./syntaxes/cesar.tmLanguage.json"
+    }]
+  }
+}
