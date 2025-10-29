@@ -47,18 +47,16 @@ clr		INTS			; Reset pedidos de interrupção
 clr 	TECST			; Reset estado do hardware do teclado
 mov		#isr,IVET		; Set Interrupt Service Rotine
 
-
-mov		#VISOR,POSICAO		; POSICAO = VISOR
 jsr		r7,ClearDisplay
-		
 
 mov		#h82,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
-
 main:
-		jsr		r7,DisplayTeclado
+		hlt
+	main_loop:
+		jsr		r7,DisplayTimers
 		jsr		r7,Wait
-		jmp		main
-		
+		jmp		main_loop
+
 DisplayTimers:
 		rts 	r7
 
@@ -66,6 +64,49 @@ DisplaySecTimer:; r0 = totalSec, r1 = display_section[5]
 		mov 	r0, r2
 
 		rts		r7
+
+csec2seccsec:
+		MOV	4(R6),R0	; R0 = csec
+		MOV 2(R6),R1	; R1 = &[sec,csec]
+
+		; sec, csec = div csec 100
+		MOV R0,-(R6)
+		MOV #100,-(R6)
+		MOV R1,-(R6)
+		JSR R7,div
+		ADD #6,R6
+
+		RTS	R7			; return;
+
+sec2minsec:
+		MOV	4(R6),R0	; R0 = sec
+		MOV 2(R6),R1	; R1 = &[min,sec]
+
+		; min, sec = div sec 60 
+		MOV R0,-(R6)
+		MOV #60,-(R6)
+		MOV R1,-(R6)
+		JSR R7,div
+		ADD #6,R6
+
+		RTS	R7			; return;
+
+div:
+		MOV	6(R6),R0	; R0 = a
+		MOV	4(R6),R1	; R1 = b
+		MOV	2(R6),R2	; R2 = &[quociente,resto]
+		MOV	0,(R2)		; quociente = 0;
+
+	div_loop:
+		CMP	R0,R1		; while (a >= b) {
+		BLT	div_end
+		INC	(R3)		; 	++quociente;
+		SUB	R1,R0		; 	a -= b;
+		JMP	div_loop	; }
+
+	div_end:
+		MOV R0,2(R2)	; resto = a
+		RTS	R7			; return;
 
 Tab10:		DAW	10000, 1000, 100, 10
 uint2str:
@@ -75,17 +116,17 @@ uint2str:
 		MOV	#Tab10,R4	; pTab10 = Tab10;
 		MOV	#4,R5		; Lacos = 4;
 		
-	Loop:				; do {
+	uint2str_Loop:				; do {
 		MOV	#'0',R3		; 	dig = '0';
 
-	LoopInterno:
+	uint2str_LoopInterno:
 		CMP	R2,(R4)		; 	while (n >= *pTab10) {
-		BLT	EhMenor
+		BLT	uint2str_EhMenor
 		INC	R3			; 		++dig;
 		SUB	(R4),R2		; 		n -= *pTab10;
-		JMP	LoopInterno	; 	}
+		JMP	uint2str_LoopInterno ; 	}
 
-	EhMenor:
+	uint2str_EhMenor:
 		MOV	-1(R1),R0	; 	*s++ = dig;
 		AND	#HFF00,R0
 		OR	R3,R0
@@ -94,7 +135,7 @@ uint2str:
 		
 		ADD	#2,R4		; 	++pTab10;
 
-		SOB	R5,Loop		; } while (--Lacos);
+		SOB	R5,uint2str_Loop ; } while (--Lacos);
 		
 		ADD	#'0',R2		; *s++ = n + '0';
 		MOV	-1(R1),R0
@@ -108,33 +149,6 @@ uint2str:
 		MOV	R0,-1(R1)
 		
 		RTS	R7
-
-;
-;**************************************************************************************************
-; Le teclado e coloca no visor
-DisplayTeclado:
-		jsr		r7,TeclaDisponivel	; while (TeclaDisponivel()) {
-		tst		r0
-		beq		DT_Fim
-		
-		jsr		r7,GetTecla			;		r0 = GetTecla()
-		
-		cmp		r0,#' '				;		if (r0>=' ' && r0<='z') {}
-		blt		DT_Fim
-		cmp		r0,#'z'
-		bgt		DT_Fim
-		
-		mov		POSICAO,r1			;			*POSICAO = r0;
-		mov		r0,(r1)
-		inc		r1					;			++POSICAO;
-		bne		CP_Inc				;			if (POSICAO==0)
-		mov		#VISOR,r1			;					POSICAO = VISOR;
-CP_Inc:
-		mov		r1,POSICAO
-		jmp		DisplayTeclado		;		}
-									; }
-DT_Fim:
-		rts		r7					; return;
 
 
 ;
@@ -152,15 +166,33 @@ WaitLoopR1:
 ;
 ;**************************************************************************************************
 ; Limpa o visor
+base_visor:		dab '000,00[0] 000,00[0] 000,00[0]  00:00'
 ClearDisplay:
-		mov		#VISOR,r0
-CD_Loop:
-		mov		#' ',(r0)
-		inc		r0
-		bne		CD_Loop
-		rts		r7
+		MOV #36,-(R6)
+
+		MOV #base_visor,-(R6)
+		DEC (R6)	;MOV para algum endereco do visor ignora o MSB, entao comecamos antes
+
+		MOV #VISOR,-(R6)
+		JSR R7,memcpy
+		ADD #6,R6
+		RTS R7
 		
-		
+memcpy:
+		MOV	6(R6),R0	; R0 = len
+		MOV 4(R6),R1	; R1 = &src_start
+		MOV 2(R6),R2	; R2 = &src_dest
+
+	memcpy_loop:
+		TST R0
+		BEQ memcpy_end	; while R0 != 0
+		MOV (R1),(R2)
+		INC R1
+		INC R2
+		DEC R0
+		JMP memcpy_loop
+	memcpy_end:
+		RTS	R7
 ;
 ;**************************************************************************************************
 ; Rotinas para a manipulação do hardware e interrupção (se houver) do teclado
@@ -278,13 +310,18 @@ isr_tim_end:
 		rts		r7
 		
 ; VAR
-TICKCNT:	dw		0
-TICK:		dw		0
+TICKCNT:			dw	0
+TICK:				dw	0
 
-sec_since_start: dw	0
-ms_since_tec: daw	[3]
-laps:		daw		[3]
+sec_since_start: 	dw	0
+cs_since_tec: 		daw [3]
+laps:				daw	[3]
 
-ptIn:		dw		0
-ptOut:		dw		0
-TEC_BUFFER:	dab		[32]
+
+min:				dw 0
+sec:				dw 0
+sec_csec:			daw [6]
+
+ptIn:				dw	0
+ptOut:				dw	0
+TEC_BUFFER:			dab	[32]

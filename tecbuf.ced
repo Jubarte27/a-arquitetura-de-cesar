@@ -1,19 +1,19 @@
 
 ;
 ;**************************************************************************************************
-;	- Programa para comparar o comportamento da leitura de teclado de forma direta e usando a interrupção
+;	- Programa para comparar o comportamento da leitura de teclado de forma direta e usando a interrupo
 ;	- O programa verifica se tem tecla.
 ;		- Se tiver, colocar no visor;
-;		- Se não tiver, entra em um wait de 10 segundos
-;	- No laco principal tem duas funções:
-;		1. DisplayTeclado: lê o teclado e coloca no visor
-;		2. Wait: fornece a temporização de 10 segundos
-;	- São duas versões do programa
-;		1. Versão sem interrupção -> mostra-se que serão perdidas teclas, mesmo com um buffer no PP
-;		2. Versão com interrupção -> mostra-se que as teclas podem ser armazenadas em um buffer, na ISR
-;	- Versão 1
-;		<<1>> Configuração da interrupção
-;		<<2>> Configuração da leitura de teclado
+;		- Se no tiver, entra em um wait de 10 segundos
+;	- No laco principal tem duas funes:
+;		1. DisplayTeclado: l o teclado e coloca no visor
+;		2. Wait: fornece a temporizao de 10 segundos
+;	- So duas verses do programa
+;		1. Verso sem interrupo -> mostra-se que sero perdidas teclas, mesmo com um buffer no PP
+;		2. Verso com interrupo -> mostra-se que as teclas podem ser armazenadas em um buffer, na ISR
+;	- Verso 1
+;		<<1>> Configurao da interrupo
+;		<<2>> Configurao da leitura de teclado
 ;		
 ;
 ;**************************************************************************************************
@@ -21,13 +21,13 @@
 
 
 ;==========================================================================
-; Área Reservada
+; rea Reservada
 
 ; Acesso em 16 bits
 		org		hff80
 STACK:
-		daw		[31]		; Área reservada
-IVET:	dw		0			; Vetor de interrupção
+		daw		[31]		; rea reservada
+IVET:	dw		0			; Vetor de interrupo
 
 ; Acesso em 8 bits
 		dab		[24]
@@ -46,13 +46,13 @@ VISOR:	dab		[36]		; Portas de acesso ao visor
 ;**************************************************************************************************
 ; Inicializa o processador e o hardware		
 		mov		#STACK,r6
-		clr		INTS			; Reset pedidos de interrupção
+		clr		INTS			; Reset pedidos de interrupo
 		clr 	TECST			; Reset estado do hardware do teclado
 		mov		#isr,IVET		; Set Interrupt Service Rotine
 		
 ;
 ;**************************************************************************************************
-; Inicializa variaveis de operação das rotinas do programa
+; Inicializa variaveis de operao das rotinas do programa
 		mov		#VISOR,POSICAO		; POSICAO = VISOR
 		jsr		r7,ClearDisplay
 		
@@ -60,9 +60,9 @@ VISOR:	dab		[36]		; Portas de acesso ao visor
 ;**************************************************************************************************
 ; Programa principal
 
-; <<1>> Configuração da interrupção
-		mov		#h00,INTE		; Sem interrupção
-;		mov		#h82,INTE		; Com interrupção de teclado - Habilita as interrupções necessárias: TECLADO=0x82   TIMER=0x81
+; <<1>> Configurao da interrupo
+		mov		#h00,INTE		; Sem interrupo
+;		mov		#h82,INTE		; Com interrupo de teclado - Habilita as interrupes necessrias: TECLADO=0x82   TIMER=0x81
 
 main:
 		jsr		r7,DisplayTeclado
@@ -124,24 +124,24 @@ CD_Loop:
 		
 ;
 ;**************************************************************************************************
-; Rotinas para a manipulação do hardware e interrupção (se houver) do teclado
+; Rotinas para a manipulao do hardware e interrupo (se houver) do teclado
 ; TeclaDisponivel	-> Rotina que informa se algo foi digitado
 ; GetTecla			-> Rotina que retorna a tecla digitada
 
-; <<2>> Configuração da leitura de teclado
+; <<2>> Configurao da leitura de teclado
 
 ;
 ; Rotina que informa se algo foi digitado
 ; Retorna R0==0, se nada digitado; R0!=0, se algo digitado
 TeclaDisponivel:	jmp		TeclaDisponivel_1	; -> leitura direta
-;TeclaDisponivel:	jmp		TeclaDisponivel_2	; -> leitura por interrupção
+;TeclaDisponivel:	jmp		TeclaDisponivel_2	; -> leitura por interrupo
 ;
 ; Rotina que retorna a tecla digitada
 GetTecla:			jmp		GetTecla_1
 ;GetTecla:			jmp		GetTecla_2
 
 ;
-; Versão 1 das funções
+; Verso 1 das funes
 TeclaDisponivel_1:
 		mov		TECST,r0
 		rts		r7
@@ -152,7 +152,7 @@ GetTecla_1:
 		rts		r7
 
 ;
-; Versão 2 das funções
+; Verso 2 das funes
 TeclaDisponivel_2:
 		and		#h7f,INTE			; IE = 0;
 		
@@ -185,8 +185,8 @@ GetTecla_2:
 				
 ;
 ;**************************************************************************************************
-; Rotina de INTERRUPÇÃO
-; Só será chamada se as interrupções estiverem habilitadas
+; Rotina de INTERRUPO
+; S ser chamada se as interrupes estiverem habilitadas
 isr:
 		mov		r0,-(r6)	; Salva registradores
 		mov		r1,-(r6)
@@ -195,7 +195,7 @@ isr:
 		mov		r4,-(r6)
 		mov		r5,-(r6)
 
-		mov		INTS,r0		; Verifica se é INT do TECLADO
+		mov		INTS,r0		; Verifica se  INT do TECLADO
 		and		#2,r0
 		beq		ISR3
 		jsr		r7,ISRtec	; Tratamento da INT do TECLADO
@@ -212,9 +212,9 @@ ISR3:
 		rti					; Return From Interrupt
 
 
-; Tratamento das interrupções de teclado
+; Tratamento das interrupes de teclado
 ISRtec:
-		tst		TECST				; if (Tecla está disponivel?) {
+		tst		TECST				; if (Tecla est disponivel?) {
 		beq		ISRtec1
 		
 		mov		ptIn,r2				; 		p = (in+1)&0x1F
@@ -244,9 +244,9 @@ ISRtec1:
 ;
 ;**************************************************************************************************
 ; Variaveis do programa
-; Ocupam a memória logo após o final do programa		
+; Ocupam a memria logo aps o final do programa		
 ;
-POSICAO:	dw		0		; Endereço no visor da posição atual onde o 'A' está aparecendo
+POSICAO:	dw		0		; Endereo no visor da posio atual onde o 'A' est aparecendo
 
 ptIn:		dw		0
 ptOut:		dw		0
