@@ -50,7 +50,7 @@ clr 	TECST			; Reset estado do hardware do teclado
 jsr		R7,ClearDisplay
 
 mov		#ISR,IVET		; Set Interrupt Service Rotine
-mov		#H80,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
+mov		#H83,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
 mov		#10,TIMDT		; 10ms = 1cs
 mov 	#100,TICKS_TIL_SEC
 
@@ -85,28 +85,14 @@ DisplayCSecTimer:
 
 		MOV R0,R1
 		ASL R1			; R1 = 2 * timer_index
-
-		SUB #4, R6
-		MOV R6, R3		; R3 = uint[2]
-
-		MOV #cs_since_tec,R4 ; R4 = cs_since_tec[timer_index]
-		ADD R1,R4
-		MOV (R4),R4
-
-MOV R1,-(R6)
-MOV R3,-(R6)
-		MOV R4,-(R6)
-		MOV R3,-(R6)
-		JSR R7, csec2seccsec
-		ADD #4, R6
-MOV (R6)+,R3
-MOV (R6)+,R1
-
 		MOV #TIMER_SEC_POSITION,R4 ; R4 = TIMER_SEC_POSITION[timer_index]
 		ADD R1,R4
 		MOV (R4),R4
+		
+		ASL R1			; R1 = 4 * timer_index
+		MOV #time_since_tec,R3 ; R3 = time_since_tec + timer_index
+		ADD R1,R3
 
-MOV R1,-(R6)
 MOV R3,-(R6)
 MOV R4,-(R6)
 		MOV (R3),-(R6)
@@ -116,9 +102,8 @@ MOV R4,-(R6)
 		ADD #6,R6
 MOV (R6)+,R4
 MOV (R6)+,R3
-MOV (R6)+,R1
 
-		ADD #4,R4
+		ADD #4,R4		; 4 characteres entre início dos segundos e início dos centésimos
 
 		MOV 2(R3),-(R6)
 		MOV R4,-(R6)
@@ -126,31 +111,19 @@ MOV (R6)+,R1
 		JSR R7, uint2str
 		ADD #6,R6
 
-		ADD #4,R6 ; Free R3
-
 		RTS R7
 
-; 65500 + 31
-TOTAL_TIME_MIN_POSITION: dw 65531
-; 65500 + 34
-TOTAL_TIME_SEC_POSITION: dw 65534
-; pattern = 00:00
-DisplaySecTimer:
-		; min, sec = sec2minsec sec_since_start &[min,sec]
-		MOV sec_since_start, -(R6)
-		MOV #min, -(R6)
-		JSR R7, sec2minsec
-		ADD #4, R6
+DisplaySecTimer:; Uses R0
 
-		MOV min,-(R6)
-		MOV TOTAL_TIME_MIN_POSITION,-(R6)
-		MOV #2,-(R6)
+		MOV min_since_start,-(R6)
+		MOV #65531,-(R6); Posição dos minutos no visor
+		MOV #2,-(R6)	; 2 espaços para minutos no visor
 		JSR R7, uint2str
 		ADD #6,R6
 
-		MOV sec,-(R6)
-		MOV TOTAL_TIME_SEC_POSITION,-(R6)
-		MOV #2,-(R6)
+		MOV sec_since_start,-(R6)
+		MOV #65534,-(R6); Posição dos segundos no visor
+		MOV #2,-(R6)	; 2 espaços para segundos no visor
 		JSR R7, uint2str
 		ADD #6,R6
 
@@ -401,22 +374,29 @@ isr_tec_end:
 	
 
 isr_tim:
+
+ISR_TIM_TOTAL:
 		DEC TICKS_TIL_SEC
-		BGT isr_tim_end
+		BGT ISR_TIM_TOTAL_END
+
 		INC sec_since_start
-		MOV #100, TICKS_TIL_SEC
+		MOV #100, TICKS_TIL_SEC	; Deveria ser 1000 / TIMDT
+		
+		CMP sec_since_start, #60
+		BLT ISR_TIM_TOTAL_END
+		INC min_since_start
+		CLR	sec_since_start
+ISR_TIM_TOTAL_END:
 
 isr_tim_end:
 		rts	r7
 		
 ; VAR
 TICKS_TIL_SEC:		dw	0
-sec_since_start: 	dw	0	; Segundos deste o início
-; Par minuto:segundo para exibir na tela, computado a partir de sec_since_start
-min:				dw 0
-sec:				dw 0
+min_since_start:	dw  49	; Minutos completos desde o início do programa
+sec_since_start: 	dw	34	; Segundos deste o último minuto completo (sec % 60)
 
-cs_since_tec: 		daw 999,666,5364 ; Contador, em centésimos de segundo, 1 para cada cronômetro
+time_since_tec: 	daw 28,12,66,66,53,64 ; Contador, em centésimos de segundo, 1 para cada cronômetro
 laps:				daw	[3]	; Quantidade de voltas, 1 para cada cronomêtro
 states:				daw [3] ; Estado dos contadores: S_WAIT, S_SHOW, S_FROZEN
 							; 
