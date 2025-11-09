@@ -50,7 +50,7 @@ clr 	TECST			; Reset estado do hardware do teclado
 jsr		R7,ClearDisplay
 
 mov		#ISR,IVET		; Set Interrupt Service Rotine
-mov		#H83,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
+mov		#H80,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
 mov		#10,TIMDT		; 10ms = 1cs
 mov 	#100,TICKS_TIL_SEC
 
@@ -63,7 +63,72 @@ main:
 
 DisplayTimers:
 		JSR R7, DisplaySecTimer
-		rts 	r7
+
+		MOV #0, -(R6)
+		JSR R7 DisplayCSecTimer
+		ADD #2, R6
+
+		MOV #1, -(R6)
+		JSR R7 DisplayCSecTimer
+		ADD #2, R6
+
+		MOV #2, -(R6)
+		JSR R7 DisplayCSecTimer
+		ADD #2 R6
+
+		RTS r7
+
+; 65500 + 0, 65500 + 10, 65500 + 20
+TIMER_SEC_POSITION: daw 65500,65510,65520
+DisplayCSecTimer:
+		MOV 2(R6),R0	; R0 = timer_index (starts at 0)
+
+		MOV R0,R1
+		ASL R1			; R1 = 2 * timer_index
+
+		SUB #4, R6
+		MOV R6, R3		; R3 = uint[2]
+
+		MOV #cs_since_tec,R4 ; R4 = cs_since_tec[timer_index]
+		ADD R1,R4
+		MOV (R4),R4
+
+MOV R1,-(R6)
+MOV R3,-(R6)
+		MOV R4,-(R6)
+		MOV R3,-(R6)
+		JSR R7, csec2seccsec
+		ADD #4, R6
+MOV (R6)+,R3
+MOV (R6)+,R1
+
+		MOV #TIMER_SEC_POSITION,R4 ; R4 = TIMER_SEC_POSITION[timer_index]
+		ADD R1,R4
+		MOV (R4),R4
+
+MOV R1,-(R6)
+MOV R3,-(R6)
+MOV R4,-(R6)
+		MOV (R3),-(R6)
+		MOV R4,-(R6)
+		MOV #3,-(R6)
+		JSR R7, uint2str
+		ADD #6,R6
+MOV (R6)+,R4
+MOV (R6)+,R3
+MOV (R6)+,R1
+
+		ADD #4,R4
+
+		MOV 2(R3),-(R6)
+		MOV R4,-(R6)
+		MOV #2,-(R6)
+		JSR R7, uint2str
+		ADD #6,R6
+
+		ADD #4,R6 ; Free R3
+
+		RTS R7
 
 ; 65500 + 31
 TOTAL_TIME_MIN_POSITION: dw 65531
@@ -346,17 +411,23 @@ isr_tim_end:
 		
 ; VAR
 TICKS_TIL_SEC:		dw	0
-
 sec_since_start: 	dw	0	; Segundos deste o início
-cs_since_tec: 		daw [3] ; Centésimos de segundo desde a última volta, 1 para cada cronômetro
-laps:				daw	[3]	; Quantidade de voltas, 1 para cada cronomêtro
-
 ; Par minuto:segundo para exibir na tela, computado a partir de sec_since_start
 min:				dw 0
 sec:				dw 0
 
-; 3 Pares segundo:centésimo de segundo para exibir na tela, computado a partir de cs_since_tec
-sec_csec:			daw [6]
+cs_since_tec: 		daw 999,666,5364 ; Contador, em centésimos de segundo, 1 para cada cronômetro
+laps:				daw	[3]	; Quantidade de voltas, 1 para cada cronomêtro
+states:				daw [3] ; Estado dos contadores: S_WAIT, S_SHOW, S_FROZEN
+							; 
+; Máscaras para obter informações sobre os estados:
+C_UPDATE_COUNTER:	dw 1	; 0000000000000001
+C_UPDATE_VISOR:		dw 2	; 0000000000000010
+
+; Estados
+S_WAIT:				dw 1	; 0100000000000000
+S_SHOW:				dw 2	; 1000000000000011
+S_FROZEN:			dw 4	; 1100000000000010
 
 ptIn:				dw	0
 ptOut:				dw	0
