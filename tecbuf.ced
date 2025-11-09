@@ -122,65 +122,65 @@ CD_Loop:
 		rts		r7
 		
 		
-;
-;**************************************************************************************************
-; Rotinas para a manipulao do hardware e interrupo (se houver) do teclado
-; TeclaDisponivel	-> Rotina que informa se algo foi digitado
-; GetTecla			-> Rotina que retorna a tecla digitada
+; ;
+; ;**************************************************************************************************
+; ; Rotinas para a manipulao do hardware e interrupo (se houver) do teclado
+; ; TeclaDisponivel	-> Rotina que informa se algo foi digitado
+; ; GetTecla			-> Rotina que retorna a tecla digitada
 
-; <<2>> Configurao da leitura de teclado
+; ; <<2>> Configurao da leitura de teclado
 
-;
-; Rotina que informa se algo foi digitado
-; Retorna R0==0, se nada digitado; R0!=0, se algo digitado
-TeclaDisponivel:	jmp		TeclaDisponivel_1	; -> leitura direta
-;TeclaDisponivel:	jmp		TeclaDisponivel_2	; -> leitura por interrupo
-;
-; Rotina que retorna a tecla digitada
-GetTecla:			jmp		GetTecla_1
-;GetTecla:			jmp		GetTecla_2
+; ;
+; ; Rotina que informa se algo foi digitado
+; ; Retorna R0==0, se nada digitado; R0!=0, se algo digitado
+; TeclaDisponivel:	jmp		TeclaDisponivel_1	; -> leitura direta
+; ;TeclaDisponivel:	jmp		TeclaDisponivel_2	; -> leitura por interrupo
+; ;
+; ; Rotina que retorna a tecla digitada
+; GetTecla:			jmp		GetTecla_1
+; ;GetTecla:			jmp		GetTecla_2
 
-;
-; Verso 1 das funes
-TeclaDisponivel_1:
-		mov		TECST,r0
-		rts		r7
+; ;
+; ; Verso 1 das funes
+; TeclaDisponivel_1:
+; 		mov		TECST,r0
+; 		rts		r7
 		
-GetTecla_1:
-		mov		TECDT,r0
-		clr		TECST
-		rts		r7
+; GetTecla_1:
+; 		mov		TECDT,r0
+; 		clr		TECST
+; 		rts		r7
 
-;
-; Verso 2 das funes
-TeclaDisponivel_2:
-		and		#h7f,INTE			; IE = 0;
+; ;
+; ; Verso 2 das funes
+; TeclaDisponivel_2:
+; 		and		#h7f,INTE			; IE = 0;
 		
-		clr		r0					; R0 = (prOut==ptIn ? FALSE:TRUE);
-		cmp		ptOut, ptIn
-		beq		TD_2_1
-		mov		#1,r0
-TD_2_1:
+; 		clr		r0					; R0 = (prOut==ptIn ? FALSE:TRUE);
+; 		cmp		ptOut, ptIn
+; 		beq		TD_2_1
+; 		mov		#1,r0
+; TD_2_1:
 
-		or		#h80,INTE			; IE = 1;
-		rts		r7
+; 		or		#h80,INTE			; IE = 1;
+; 		rts		r7
 		
-GetTecla_2:
-		and		#h7f,INTE			; IE = 0
+; GetTecla_2:
+; 		and		#h7f,INTE			; IE = 0
 		
-		mov		ptOut,r1			; r0 = *ptOut++
-		dec		r1
-		mov		TEC_BUFFER(r1),r0
-		add		#2,r1
+; 		mov		ptOut,r1			; r0 = *ptOut++
+; 		dec		r1
+; 		mov		TEC_BUFFER(r1),r0
+; 		add		#2,r1
 		
-		and		#hff,r0				; r0 &= 0xFF
+; 		and		#hff,r0				; r0 &= 0xFF
 		
-		and		#h1f,r1				; ptOut = ptOut & 0x1F // loop around pointer
-		mov		r1,ptOut		
+; 		and		#h1f,r1				; ptOut = ptOut & 0x1F // loop around pointer
+; 		mov		r1,ptOut		
 		
-		or		#h80,INTE			; IE = 1
+; 		or		#h80,INTE			; IE = 1
 		
-		rts		r7
+; 		rts		r7
 
 				
 ;

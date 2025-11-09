@@ -30,7 +30,8 @@ STACK:
 IVET:	dw		0			; Vetor de interrupção
 
 ; Acesso em 8 bits
-		dab		[24]
+		dab		[23]
+TIMDT:	db		0
 INTS:	db		0			; INTERRUPT STATUS: IP x x x . x x IPStec IPStim
 INTE:	db		0			; INTERRUPT ENABLE: IE x x x . x x IEStec IEStim
 TECST:	db		0			; Status do teclado
@@ -45,27 +46,52 @@ INI:
 mov		#STACK,r6
 clr		INTS			; Reset pedidos de interrupção
 clr 	TECST			; Reset estado do hardware do teclado
-mov		#isr,IVET		; Set Interrupt Service Rotine
 
 jsr		r7,ClearDisplay
 
-mov		#h82,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
+mov		#ISR,IVET		; Set Interrupt Service Rotine
+mov		#H83,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
+mov		#10,TIMDT		; 10ms = 1cs
+mov 	#100,TICKS_TIL_SEC
+
 main:
-		hlt
 	main_loop:
 		jsr		r7,DisplayTimers
 		jsr		r7,Wait
 		jmp		main_loop
+		hlt
 
 DisplayTimers:
+		JSR R7, DisplaySecTimer
 		rts 	r7
 
-DisplaySecTimer:; r0 = totalSec, r1 = display_section[5]
-		mov 	r0, r2
+; 65500 + 31
+TOTAL_TIME_MIN_POSITION: dw 65531
+; 65500 + 34
+TOTAL_TIME_SEC_POSITION: dw 65534
+; pattern = 00:00
+DisplaySecTimer:
+		; min, sec = sec2minsec sec_since_start &[min,sec]
+		MOV sec_since_start, -(R6)
+		MOV #min, -(R6)
+		JSR R7, sec2minsec
+		ADD #4, R6
+
+		MOV min,-(R6)
+		MOV TOTAL_TIME_MIN_POSITION,-(R6)
+		MOV #2,-(R6)
+		JSR R7, uint2str
+		ADD #6,R6
+
+		MOV sec,-(R6)
+		MOV TOTAL_TIME_SEC_POSITION,-(R6)
+		MOV #2,-(R6)
+		JSR R7, uint2str
+		ADD #6,R6
 
 		rts		r7
 
-csec2seccsec:
+csec2seccsec:; Uses R0, R1
 		MOV	4(R6),R0	; R0 = csec
 		MOV 2(R6),R1	; R1 = &[sec,csec]
 
@@ -78,7 +104,7 @@ csec2seccsec:
 
 		RTS	R7			; return;
 
-sec2minsec:
+sec2minsec:; Uses R0, R1
 		MOV	4(R6),R0	; R0 = sec
 		MOV 2(R6),R1	; R1 = &[min,sec]
 
@@ -91,16 +117,16 @@ sec2minsec:
 
 		RTS	R7			; return;
 
-div:
+div:; Uses R0, R1, R2
 		MOV	6(R6),R0	; R0 = a
 		MOV	4(R6),R1	; R1 = b
 		MOV	2(R6),R2	; R2 = &[quociente,resto]
-		MOV	0,(R2)		; quociente = 0;
+		MOV	#0,(R2)		; quociente = 0;
 
 	div_loop:
 		CMP	R0,R1		; while (a >= b) {
 		BLT	div_end
-		INC	(R3)		; 	++quociente;
+		INC	(R2)		; 	++quociente;
 		SUB	R1,R0		; 	a -= b;
 		JMP	div_loop	; }
 
@@ -108,46 +134,48 @@ div:
 		MOV R0,2(R2)	; resto = a
 		RTS	R7			; return;
 
-Tab10:		DAW	10000, 1000, 100, 10
-uint2str:
-		MOV	2(R6),R1	; R1 = s
-		MOV	4(R6),R2	; R2 = n
+uint2str_aux: daw [2]
+uint2str:; uses R0, R1, R2, R3, R4
+		MOV	6(R6),R0	; R0 = src -> uint
+		MOV	4(R6),R1	; R1 = *dst -> byte array
+		MOV	2(R6),R2	; R2 = dst_len -> uint
 
-		MOV	#Tab10,R4	; pTab10 = Tab10;
-		MOV	#4,R5		; Lacos = 4;
+		MOV #uint2str_aux,R3
+		MOV #0, R4
 		
-	uint2str_Loop:				; do {
-		MOV	#'0',R3		; 	dig = '0';
+	uint2str_loop:
+		CMP R2,R4
+		BLE uint2str_end
 
-	uint2str_LoopInterno:
-		CMP	R2,(R4)		; 	while (n >= *pTab10) {
-		BLT	uint2str_EhMenor
-		INC	R3			; 		++dig;
-		SUB	(R4),R2		; 		n -= *pTab10;
-		JMP	uint2str_LoopInterno ; 	}
+		; uint2str_aux = div src 10
+		MOV R1,-(R6)
+		MOV R2,-(R6)
+		MOV R3,-(R6)
+		MOV R4,-(R6)
 
-	uint2str_EhMenor:
-		MOV	-1(R1),R0	; 	*s++ = dig;
-		AND	#HFF00,R0
-		OR	R3,R0
-		MOV	R0,-1(R1)
-		INC	R1
-		
-		ADD	#2,R4		; 	++pTab10;
+		MOV R0,-(R6)
+		MOV #10,-(R6)
+		MOV R3,-(R6)
+		JSR R7,div
+		ADD #6,R6
 
-		SOB	R5,uint2str_Loop ; } while (--Lacos);
+		MOV (R6)+,R1
+		MOV (R6)+,R2
+		MOV (R6)+,R3
+		MOV (R6)+,R4
+
+		; R0 = quociente
+		MOV (R3), R0
+
+		; R1 = resto + '0'
+		MOV #'0',(R1)
+		ADD 2(R3),(R1)
+
+		INC R1
+		INC R4
+		JMP uint2str_loop
 		
-		ADD	#'0',R2		; *s++ = n + '0';
-		MOV	-1(R1),R0
-		AND	#HFF00,R0
-		OR	R2,R0
-		MOV	R0,-1(R1)
-		INC	R1
-		
-		MOV	-1(R1),R0	; *s++ = '\0';
-		AND	#HFF00,R0
-		MOV	R0,-1(R1)
-		
+	uint2str_end:
 		RTS	R7
 
 
@@ -155,6 +183,7 @@ uint2str:
 ;**************************************************************************************************
 ; Simula um processamento demorado
 Wait:
+		rts	R7
 		mov		#10,r0
 WaitLoopR0:
 		mov		#30000,r1
@@ -193,58 +222,58 @@ memcpy:
 		JMP memcpy_loop
 	memcpy_end:
 		RTS	R7
-;
-;**************************************************************************************************
-; Rotinas para a manipulação do hardware e interrupção (se houver) do teclado
-; TeclaDisponivel	-> Rotina que informa se algo foi digitado
-; GetTecla			-> Rotina que retorna a tecla digitada
+; ;
+; ;**************************************************************************************************
+; ; Rotinas para a manipulação do hardware e interrupção (se houver) do teclado
+; ; TeclaDisponivel	-> Rotina que informa se algo foi digitado
+; ; GetTecla			-> Rotina que retorna a tecla digitada
 
-; <<2>> Configuração da leitura de teclado
+; ; <<2>> Configuração da leitura de teclado
 
-;
-; Rotina que informa se algo foi digitado
-; Retorna R0==0, se nada digitado; R0!=0, se algo digitado
-TeclaDisponivel:	jmp		TeclaDisponivel_2
+; ;
+; ; Rotina que informa se algo foi digitado
+; ; Retorna R0==0, se nada digitado; R0!=0, se algo digitado
+; TeclaDisponivel:	jmp		TeclaDisponivel_2
 
-; Rotina que retorna a tecla digitada
-GetTecla:			jmp		GetTecla_2
+; ; Rotina que retorna a tecla digitada
+; GetTecla:			jmp		GetTecla_2
 
 
-; Versão 2 das funções
-TeclaDisponivel_2:
-		and		#h7f,INTE			; IE = 0;
+; ; Versão 2 das funções
+; TeclaDisponivel_2:
+; 		and		#h7f,INTE			; IE = 0;
 		
-		clr		r0					; R0 = (prOut==ptIn ? FALSE:TRUE);
-		cmp		ptOut, ptIn
-		beq		TD_2_1
-		mov		#1,r0
-TD_2_1:
+; 		clr		r0					; R0 = (prOut==ptIn ? FALSE:TRUE);
+; 		cmp		ptOut, ptIn
+; 		beq		TD_2_1
+; 		mov		#1,r0
+; TD_2_1:
 
-		or		#h80,INTE			; IE = 1;
-		rts		r7
+; 		or		#h80,INTE			; IE = 1;
+; 		rts		r7
 		
-GetTecla_2:
-		and		#h7f,INTE			; IE = 0
+; GetTecla_2:
+; 		and		#h7f,INTE			; IE = 0
 		
-		mov		ptOut,r1			; r0 = *ptOut++
-		dec		r1
-		mov		TEC_BUFFER(r1),r0
-		add		#2,r1
+; 		mov		ptOut,r1			; r0 = *ptOut++
+; 		dec		r1
+; 		mov		TEC_BUFFER(r1),r0
+; 		add		#2,r1
 		
-		and		#hff,r0				; r0 &= 0xFF
+; 		and		#hff,r0				; r0 &= 0xFF
 		
-		and		#h1f,r1				; ptOut = ptOut & 0x1F // loop around pointer
-		mov		r1,ptOut		
+; 		and		#h1f,r1				; ptOut = ptOut & 0x1F // loop around pointer
+; 		mov		r1,ptOut		
 		
-		or		#h80,INTE			; IE = 1
-		rts		r7
+; 		or		#h80,INTE			; IE = 1
+; 		rts		r7
 
 				
 ;
 ;**************************************************************************************************
 ; Rotina de INTERRUPÇÃO
 ; Só será chamada se as interrupções estiverem habilitadas
-isr:
+ISR:
 		mov		r0,-(r6)	; Salva registradores
 		mov		r1,-(r6)
 		mov		r2,-(r6)
@@ -304,22 +333,27 @@ isr_tec_end:
 	
 
 isr_tim:
-		inc		TICKCNT
-		mov		#1,TICK
+		INC TICKCNT
+		DEC TICKS_TIL_SEC
+		BNE isr_tim_end
+		INC sec_since_start
+
 isr_tim_end:
-		rts		r7
+		rts	r7
 		
 ; VAR
 TICKCNT:			dw	0
-TICK:				dw	0
+TICKS_TIL_SEC:		dw	0
 
-sec_since_start: 	dw	0
-cs_since_tec: 		daw [3]
-laps:				daw	[3]
+sec_since_start: 	dw	125	; Segundos deste o início
+cs_since_tec: 		daw [3] ; Centésimos de segundo desde a última volta, 1 para cada cronômetro
+laps:				daw	[3]	; Quantidade de voltas, 1 para cada cronomêtro
 
-
+; Par minuto:segundo para exibir na tela, computado a partir de sec_since_start
 min:				dw 0
 sec:				dw 0
+
+; 3 Pares segundo:centésimo de segundo para exibir na tela, computado a partir de cs_since_tec
 sec_csec:			daw [6]
 
 ptIn:				dw	0
