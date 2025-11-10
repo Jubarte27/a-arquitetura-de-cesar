@@ -47,7 +47,7 @@ mov		#STACK,R6
 clr		INTS			; Reset pedidos de interrupção
 clr 	TECST			; Reset estado do hardware do teclado
 
-jsr		R7,ClearDisplay
+JSR		R7,ClearDisplay
 
 mov		#ISR,IVET		; Set Interrupt Service Rotine
 mov		#H83,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
@@ -56,27 +56,161 @@ mov 	#100,TICKS_TIL_SEC
 
 main:
 	main_loop:
-		jsr		r7,DisplayTimers
-		; jsr		r7,Wait
-		jmp		main_loop
-		hlt
+		JSR R7,AnswerKeys
+		JSR R7,CallFrozen5Seconds
+		JSR	R7,DisplayTimers
+		; JSR r7,Wait
+		JMP	main_loop
+		HLT
+
+CallFrozen5Seconds:
+		MOV #0,R0
+		JSR R7,Frozen5Seconds
+		MOV #1,R0
+		JSR R7,Frozen5Seconds
+		MOV #2,R0
+		JSR R7,Frozen5Seconds
+		RTS R7
+
+;Verifica se o cronômetro está em S_FROZEN por 5 ou mais segundos e toma as providências necessárias
+Frozen5Seconds:; recebe index em R0
+		ASL R0
+
+		MOV #states,R2				; R2 = &states[R0]
+		ADD R0,R2
+
+		CMP (R2),S_FROZEN
+		BNE Frozen5Seconds_end		; Não está Frozen, não mexo
+
+		MOV R0,R1
+		ASL R1
+		ADD #time_since_tec,R1		; R3 = &time_since_tec[R0] ; (time_since_tec contem pares)
+		
+		CMP (R1),#5
+		BLT Frozen5Seconds_end		; Não está há 5 segundos ou mais em Frozen, não mexo
+		
+		MOV S_SHOW, (R2)			; Estou em frozen a 5 segundos ou mais, vou para Show
+
+	Frozen5Seconds_end:
+		RTS R7
+
+AnswerKeys:
+		JSR R7,TeclaDisponivel	; if TeclaDisponivel? 
+		TST R0
+		BEQ AnswerKeys_end
+
+		JSR R7,GetTecla			; R0 = GetTecla
+
+		SUB #'1',R0				; if GetTecla < '1' then goto AnswerKeys_not123
+		BLT AnswerKeys_not123
+								; else
+		CMP R0,#3				; if GetTecla > '3' then goto AnswerKeys_not123
+		BGE AnswerKeys_not123
+								; else
+		JSR R7,ToNextState		; ToNextState R0
+
+	AnswerKeys_not123:
+		JMP AnswerKeys			; próxima tecla
+	AnswerKeys_end:
+		RTS R7
+
+ToNextState:; Recebe o indice do contador em R0
+		ASL R0					; R0 = index * 2; Facilita acesso em memória
+		MOV #states,R1
+		ADD R0,R1				; R1 = &states[R0]
+
+		MOV #laps,R2
+		ADD R0,R2				; R2 = &laps[R0]
+
+	ToNextState_FromWait:
+		CMP (R1),S_WAIT			; if states[R0] == S_WAIT then
+		BNE ToNextState_FromWait_end
+		MOV S_SHOW,(R1)			; states[R0] = S_SHOW
+
+		MOV #1,(R2)				; laps[R0] = 1
+
+		JMP ToNextState_end
+	ToNextState_FromWait_end:
+
+		; Show e Frozen zeram o cronomêtro
+		MOV R0,R3
+		ASL R3
+		ADD #time_since_tec,R3	; R3 = &time_since_tec[R0] ; (time_since_tec contem pares)
+		CLR (R3)
+		CLR 2(R3)				; time_since_tec[R0] = (0,0) ; Zerar cronômetro
+		
+	ToNextState_FromShow:
+		CMP (R1),S_SHOW			; if states[R0] == S_SHOW then
+		BNE ToNextState_FromShow_end
+		MOV S_FROZEN,(R1)		; states[R0] = S_FROZEN
+
+		INC (R2)									; lap[R0] = (lap[R0] + 1) % 10
+		ToNextState_FromShow_lapmod10:				;
+			CMP (R2),#10							;
+			BLT ToNextState_FromShow_lapmod10_end	;
+			SUB #10,(R2)							;
+			JMP ToNextState_FromShow_lapmod10		;
+		ToNextState_FromShow_lapmod10_end:			;
+
+		JMP ToNextState_end
+	ToNextState_FromShow_end:
+
+	ToNextState_FromFrozen:
+		CMP (R1),S_FROZEN			; if states[R0] == S_FROZEN then
+		BNE ToNextState_FromFrozen_end; Ninguem sabe o que esta em states[R0]
+		MOV S_WAIT,(R1)		; states[R0] = S_WAIT; Se cheguei aqui, não pode ter passado de 5 segundos em Frozen, logo mudo para S_WAIT
+
+		CLR (R2)				; laps[R0] = 0 ; zerar laps
+
+		ASR R0
+		MOV R0,-(R6)
+		JSR R7 DisplayCSecTimer	; Update no visor 1 vez para zerar
+		ADD #2,R6
+		
+		JMP ToNextState_end
+	ToNextState_FromFrozen_end:
+
+	ToNextState_end:
+		RTS R7
+
 
 DisplayTimers:
 		JSR R7, DisplaySecTimer
 
 		MOV #0, -(R6)
-		JSR R7 DisplayCSecTimer
+		JSR R7,IfNeedDisplayCSecTimer
 		ADD #2, R6
 
 		MOV #1, -(R6)
-		JSR R7 DisplayCSecTimer
+		JSR R7,IfNeedDisplayCSecTimer
 		ADD #2, R6
 
 		MOV #2, -(R6)
-		JSR R7 DisplayCSecTimer
+		JSR R7,IfNeedDisplayCSecTimer
 		ADD #2 R6
 
 		RTS r7
+
+IfNeedDisplayCSecTimer:
+
+		MOV 2(R6),R0	; R0 = timer_index (starts at 0)
+
+		MOV R0,R1
+		ASL R1			; R1 = 2 * timer_index
+
+		MOV #states,R2
+		ADD R1,R2		; R2 = &states[timer_index]
+		MOV (R2),R2
+		AND C_UPDATE_VISOR,R2
+		BEQ IfNeedDisplayCSecTimer_end	; Se é um estado que não atualiza o visor, pula rotina de escrita
+
+		MOV R0,-(R6)
+		JSR R7 DisplayCSecTimer	; Update no visor 1 vez para zerar
+		ADD #2, R6
+
+IfNeedDisplayCSecTimer_end:
+		RTS R7
+
 
 ; 65500 + 0, 65500 + 10, 65500 + 20
 TIMER_SEC_POSITION: daw 65500,65510,65520
@@ -88,32 +222,50 @@ DisplayCSecTimer:
 		MOV #TIMER_SEC_POSITION,R4 ; R4 = TIMER_SEC_POSITION[timer_index]
 		ADD R1,R4
 		MOV (R4),R4
+
+		MOV #laps,R5
+		ADD R1,R5		; R5 = &laps[timer_index]
 		
 		ASL R1			; R1 = 4 * timer_index
 		MOV #time_since_tec,R3 ; R3 = time_since_tec + timer_index
 		ADD R1,R3
 
-MOV R3,-(R6)
-MOV R4,-(R6)
+	MOV R3,-(R6)
+	MOV R4,-(R6)
+	MOV R5,-(R6)
 		MOV (R3),-(R6)
 		MOV R4,-(R6)
 		MOV #3,-(R6)
 		JSR R7, uint2str
 		ADD #6,R6
-MOV (R6)+,R4
-MOV (R6)+,R3
+	MOV (R6)+,R5
+	MOV (R6)+,R4
+	MOV (R6)+,R3
 
 		ADD #4,R4		; 4 characteres entre início dos segundos e início dos centésimos
 
+	MOV R4,-(R6)
+	MOV R5,-(R6)
 		MOV 2(R3),-(R6)
 		MOV R4,-(R6)
 		MOV #2,-(R6)
 		JSR R7, uint2str
 		ADD #6,R6
+	MOV (R6)+,R4
+	MOV (R6)+,R4
+
+
+		ADD #3,R4		; 3 characteres entre início dos centésimos e as LAPS
+
+		MOV (R5),-(R6)
+		MOV R4,-(R6)
+		MOV #1,-(R6)
+		JSR R7, uint2str
+		ADD #6,R6
 
 		RTS R7
 
-DisplaySecTimer:; Uses R0
+DisplaySecTimer:
 
 		MOV min_since_start,-(R6)
 		MOV #65531,-(R6); Posição dos minutos no visor
@@ -129,7 +281,7 @@ DisplaySecTimer:; Uses R0
 
 		rts		r7
 
-csec2seccsec:; Uses R0, R1
+csec2seccsec:
 		MOV	4(R6),R0	; R0 = csec
 		MOV 2(R6),R1	; R1 = &[sec,csec]
 
@@ -142,7 +294,7 @@ csec2seccsec:; Uses R0, R1
 
 		RTS	R7			; return;
 
-sec2minsec:; Uses R0, R1
+sec2minsec:
 		MOV	4(R6),R0	; R0 = sec
 		MOV 2(R6),R1	; R1 = &[min,sec]
 
@@ -155,7 +307,7 @@ sec2minsec:; Uses R0, R1
 
 		RTS	R7			; return;
 
-div:; Uses R0, R1, R2
+div:
 		MOV	6(R6),R0	; R0 = a
 		MOV	4(R6),R1	; R1 = b
 		MOV	2(R6),R2	; R2 = &[quociente,resto]
@@ -226,9 +378,9 @@ uint2str:; uses R0, R1, R2, R3, R4
 ; Simula um processamento demorado
 Wait:
 		mov		#10,r0
-WaitLoopR0:
+	WaitLoopR0:
 		mov		#30000,r1
-WaitLoopR1:
+	WaitLoopR1:
 		sob		r1,WaitLoopR1
 		sob		r0,WaitLoopR0
 		rts		r7
@@ -278,7 +430,7 @@ TeclaDisponivel:
 		cmp		ptOut, ptIn
 		beq		TeclaDisponivel_1
 		mov		#1,r0
-TeclaDisponivel_1:
+	TeclaDisponivel_1:
 		or		#h80,INTE			; IE = 1;
 		rts		r7
 		
@@ -310,19 +462,19 @@ ISR:
 		mov		r3,-(r6)
 		mov		r4,-(r6)
 		mov		r5,-(r6)
-isr1:
+	isr1:
 		mov		INTS,r0		; Verifica se é INT do TIMER
 		and		#1,r0
 		beq		isr2
-		jsr		r7,isr_tim	; Tratamento da INT do TIMER
+		JSR		r7,isr_tim	; Tratamento da INT do TIMER
 		and		#hFFFE,INTS	; Desliga bit de INT TIMER
-isr2:
+	isr2:
 		mov		INTS,r0		; Verifica se é INT do TECLADO
 		and		#2,r0
 		beq		isr3
-		jsr		r7,isr_tec	; Tratamento da INT do TECLADO
+		JSR		r7,isr_tec	; Tratamento da INT do TECLADO
 		and		#hFFFD,INTS	; Desliga bit de INT TECLADO
-isr3:
+	isr3:
 
 		mov		(r6)+,r5	; Retorna os registradores da pilha
 		mov		(r6)+,r4
@@ -355,15 +507,15 @@ isr_tec:
 		mov		r2,ptIn				;				in = p
 									; 		}
 
-isr_tec_2:
+	isr_tec_2:
 		clr 	TECST				;
 	
-isr_tec_end:	
+	isr_tec_end:	
 		rts	r7						; }
 	
 
 isr_tim:
-ISR_TIM_TOTAL:
+	ISR_TIM_TOTAL:
 		DEC TICKS_TIL_SEC
 		BGT ISR_TIM_TOTAL_END
 
@@ -374,8 +526,8 @@ ISR_TIM_TOTAL:
 		BLT ISR_TIM_TOTAL_END
 		INC min_since_start
 		CLR	sec_since_start
-ISR_TIM_TOTAL_END:
-ISR_TIM_UPDATE_COUNTER:
+	ISR_TIM_TOTAL_END:
+	ISR_TIM_UPDATE_COUNTER:
 		MOV #0,-(R6)
 		JSR R7,ISR_UPDATE_COUNTER
 		ADD #2,R6
@@ -388,7 +540,7 @@ ISR_TIM_UPDATE_COUNTER:
 		JSR R7,ISR_UPDATE_COUNTER
 		ADD #2,R6
 
-isr_tim_end:
+	isr_tim_end:
 		RTS	r7
 
 ISR_UPDATE_COUNTER:
@@ -416,7 +568,7 @@ ISR_UPDATE_COUNTER:
 		INC (R2)
 
 
-ISR_UPDATE_COUNTER_END:
+	ISR_UPDATE_COUNTER_END:
 		RTS R7
 
 ; VAR
@@ -424,18 +576,21 @@ TICKS_TIL_SEC:		dw	0
 min_since_start:	dw  49	; Minutos completos desde o início do programa
 sec_since_start: 	dw	34	; Segundos deste o último minuto completo (sec % 60)
 
-time_since_tec: 	daw 28,12,66,66,53,64 ; Contador, em centésimos de segundo, 1 para cada cronômetro
+time_since_tec: 	daw [6] ; Par (segundo,centesimos), 1 para cada cronômetro
 laps:				daw	[3]	; Quantidade de voltas, 1 para cada cronomêtro
-states:				daw 3,3,3  ; Estado dos contadores: S_WAIT, S_SHOW, S_FROZEN
+states:				daw [3] ; Estado dos contadores: S_WAIT (inicial), S_SHOW, S_FROZEN
 							; 
 ; Máscaras para obter informações sobre os estados:
 C_UPDATE_COUNTER:	dw 1	; 0000000000000001
 C_UPDATE_VISOR:		dw 2	; 0000000000000010
 
 ; Estados
-S_WAIT:				dw H4000; 0100000000000000
-S_SHOW:				dw H8003; 1000000000000011
-S_FROZEN:			dw HC002; 1100000000000010
+; Regra de criação:
+;		byte menos significativo é o resultado da combinação das máscaras de informações sobre os estados
+; 		byte mais significativo é o índice do estado: 0,1,2
+S_WAIT:				dw H0000; 00000000 00000000
+S_SHOW:				dw H0103; 00000001 00000011
+S_FROZEN:			dw H0201; 00000010 00000001
 
 ptIn:				dw	0
 ptOut:				dw	0

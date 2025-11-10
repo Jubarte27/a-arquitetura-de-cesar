@@ -15,7 +15,7 @@
 			},
 			{
 				"name": "keyword.control.cesar",
-				"match": "\\b(?i)(hlt|ccc|scc|jmp|br|bne|beq|bpl|bmi|bvc|bvs|bcc|bcs|bge|blt|bgt|ble|bhi|bls|jsr|rts)\\b"
+				"match": "\\b(?i)(hlt|ccc|scc|jmp|br|bne|beq|bpl|bmi|bvc|bvs|bcc|bcs|bge|blt|bgt|ble|bhi|bls|jsr|rts|rti)\\b"
 			},
 			{
 				"name": "keyword.control.cesar",
