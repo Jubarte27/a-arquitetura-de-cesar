@@ -1,30 +1,7 @@
-
-;
-;**************************************************************************************************
-;	- Programa para comparar o comportamento da leitura de teclado de forma direta e usando a interrupção
-;	- O programa verifica se tem tecla.
-;		- Se tiver, colocar no visor;
-;		- Se não tiver, entra em um wait de 10 segundos
-;	- No laco principal tem duas funções:
-;		1. DisplayTeclado: lê o teclado e coloca no visor
-;		2. Wait: fornece a temporização de 10 segundos
-;	- São duas versões do programa
-;		1. Versão sem interrupção -> mostra-se que serão perdidas teclas, mesmo com um buffer no PP
-;		2. Versão com interrupção -> mostra-se que as teclas podem ser armazenadas em um buffer, na ISR
-;	- Versão 1
-;		<<1>> Configuração da interrupção
-;		<<2>> Configuração da leitura de teclado
-;		
-;
-;**************************************************************************************************
-;
-
-
 ;==========================================================================
 ; Área Reservada
-
 ; Acesso em 16 bits
-		org		hff80
+ORG		HFF80
 STACK:
 		daw		[31]		; Área reservada
 IVET:	dw		0			; Vetor de interrupção
@@ -40,30 +17,35 @@ VISOR:	dab		[36]		; Portas de acesso ao visor
 
 
 ;==========================================================================
-;
-org		0
-INI:
-mov		#STACK,R6
-clr		INTS			; Reset pedidos de interrupção
-clr 	TECST			; Reset estado do hardware do teclado
+; Main
 
+ORG		0
+INI:
+MOV		#STACK,R6
+CLR		INTS			; Reset pedidos de interrupção
+CLR 	TECST			; Reset estado do hardware do teclado
+
+JSR		R7,RESET_VARS
 JSR		R7,ClearDisplay
 
-mov		#ISR,IVET		; Set Interrupt Service Rotine
-mov		#H83,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
-mov		#10,TIMDT		; 10ms = 1cs
-mov 	#100,TICKS_TIL_SEC
+MOV		#10,TIMDT		; 10ms = 1cs
+MOV		#ISR,IVET		; Set Interrupt Service Rotine
+MOV		#H83,INTE		; Habilita: TECLADO=0x82   TIMER=0x81
 
-main:
-	main_loop:
+MAIN:
+	MAIN_LOOP:
 		JSR R7,AnswerKeys
 		JSR R7,CallFrozen5Seconds
 		JSR	R7,DisplayTimers
-		; JSR r7,Wait
-		JMP	main_loop
+		JMP	MAIN_LOOP
 		HLT
 
-CallFrozen5Seconds:
+;==========================================================================
+; Funções
+
+;--------------------------------------------------------------------------
+; Lidar com o requisito de mudar o status de frozen para show
+CallFrozen5Seconds:; recebe nada
 		MOV #0,R0
 		JSR R7,Frozen5Seconds
 		MOV #1,R0
@@ -72,7 +54,7 @@ CallFrozen5Seconds:
 		JSR R7,Frozen5Seconds
 		RTS R7
 
-;Verifica se o cronômetro está em S_FROZEN por 5 ou mais segundos e toma as providências necessárias
+; Verifica se o cronômetro está em S_FROZEN por 5 ou mais segundos e toma as providências necessárias
 Frozen5Seconds:; recebe index em R0
 		ASL R0
 
@@ -94,7 +76,9 @@ Frozen5Seconds:; recebe index em R0
 	Frozen5Seconds_end:
 		RTS R7
 
-AnswerKeys:
+;--------------------------------------------------------------------------
+; Reponder aos comandos do teclado (teclas 1, 2 e 3)
+AnswerKeys:; recebe nada
 		JSR R7,TeclaDisponivel	; if TeclaDisponivel? 
 		TST R0
 		BEQ AnswerKeys_end
@@ -114,6 +98,8 @@ AnswerKeys:
 	AnswerKeys_end:
 		RTS R7
 
+;--------------------------------------------------------------------------
+; Muda o estado do contador indicado em R0
 ToNextState:; Recebe o indice do contador em R0
 		ASL R0					; R0 = index * 2; Facilita acesso em memória
 		MOV #states,R1
@@ -173,28 +159,23 @@ ToNextState:; Recebe o indice do contador em R0
 	ToNextState_end:
 		RTS R7
 
-
+;--------------------------------------------------------------------------
+; Atualiza os timers na tela se estiverem configurados para isso
 DisplayTimers:
-		JSR R7, DisplaySecTimer
+		JSR R7,DisplaySecTimer
 
-		MOV #0, -(R6)
+		MOV #0,R0
 		JSR R7,IfNeedDisplayCSecTimer
-		ADD #2, R6
 
-		MOV #1, -(R6)
+		MOV #1,R0
 		JSR R7,IfNeedDisplayCSecTimer
-		ADD #2, R6
 
-		MOV #2, -(R6)
+		MOV #2,R0
 		JSR R7,IfNeedDisplayCSecTimer
-		ADD #2 R6
 
-		RTS r7
+		RTS R7
 
-IfNeedDisplayCSecTimer:
-
-		MOV 2(R6),R0	; R0 = timer_index (starts at 0)
-
+IfNeedDisplayCSecTimer:; recebe o indice do timer em R0
 		MOV R0,R1
 		ASL R1			; R1 = 2 * timer_index
 
@@ -204,69 +185,47 @@ IfNeedDisplayCSecTimer:
 		AND C_UPDATE_VISOR,R2
 		BEQ IfNeedDisplayCSecTimer_end	; Se é um estado que não atualiza o visor, pula rotina de escrita
 
-		MOV R0,-(R6)
 		JSR R7 DisplayCSecTimer	; Update no visor 1 vez para zerar
-		ADD #2, R6
-
 IfNeedDisplayCSecTimer_end:
 		RTS R7
 
+;--------------------------------------------------------------------------
+; Atualiza 1 cronômetro no visor, independente do estado do cronomêtro
+DisplayCSecTimer:; recebe o indice do timer em R0
+		ASL R0			; R0 = 2 * timer_index
 
-; 65500 + 0, 65500 + 10, 65500 + 20
-TIMER_SEC_POSITION: daw 65500,65510,65520
-DisplayCSecTimer:
-		MOV 2(R6),R0	; R0 = timer_index (starts at 0)
-
-		MOV R0,R1
-		ASL R1			; R1 = 2 * timer_index
-		MOV #TIMER_SEC_POSITION,R4 ; R4 = TIMER_SEC_POSITION[timer_index]
-		ADD R1,R4
-		MOV (R4),R4
-
-		MOV #laps,R5
-		ADD R1,R5		; R5 = &laps[timer_index]
+	MOV R0,-(R6)
+		MOV laps(R0),-(R6)
+		MOV TIMER_LAP_POSITION(R0),-(R6)
+		MOV #1,-(R6)
+		JSR R7, uint2str
+		ADD #6,R6
+	MOV (R6)+,R0
 		
+		MOV R0,R1
 		ASL R1			; R1 = 4 * timer_index
-		MOV #time_since_tec,R3 ; R3 = time_since_tec + timer_index
-		ADD R1,R3
+		ADD #time_since_tec,R1 ; R1 = time_since_tec + timer_index
 
-	MOV R3,-(R6)
-	MOV R4,-(R6)
-	MOV R5,-(R6)
-		MOV (R3),-(R6)
-		MOV R4,-(R6)
+	MOV R1,-(R6)
+	MOV R0,-(R6)
+		MOV (R1),-(R6)
+		MOV TIMER_SEC_POSITION(R0),-(R6)
 		MOV #3,-(R6)
 		JSR R7, uint2str
 		ADD #6,R6
-	MOV (R6)+,R5
-	MOV (R6)+,R4
-	MOV (R6)+,R3
+	MOV (R6)+,R0
+	MOV (R6)+,R1
 
-		ADD #4,R4		; 4 characteres entre início dos segundos e início dos centésimos
-
-	MOV R4,-(R6)
-	MOV R5,-(R6)
-		MOV 2(R3),-(R6)
-		MOV R4,-(R6)
+		MOV 2(R1),-(R6)
+		MOV TIMER_CSEC_POSITION(R0),-(R6)
 		MOV #2,-(R6)
-		JSR R7, uint2str
-		ADD #6,R6
-	MOV (R6)+,R4
-	MOV (R6)+,R4
-
-
-		ADD #3,R4		; 3 characteres entre início dos centésimos e as LAPS
-
-		MOV (R5),-(R6)
-		MOV R4,-(R6)
-		MOV #1,-(R6)
 		JSR R7, uint2str
 		ADD #6,R6
 
 		RTS R7
-
-DisplaySecTimer:
-
+;--------------------------------------------------------------------------
+; Atualiza o relógio que conta desde o início do programa
+DisplaySecTimer:; recebe nada
 		MOV min_since_start,-(R6)
 		MOV #65531,-(R6); Posição dos minutos no visor
 		MOV #2,-(R6)	; 2 espaços para minutos no visor
@@ -279,35 +238,11 @@ DisplaySecTimer:
 		JSR R7, uint2str
 		ADD #6,R6
 
-		rts		r7
+		RTS		R7
 
-csec2seccsec:
-		MOV	4(R6),R0	; R0 = csec
-		MOV 2(R6),R1	; R1 = &[sec,csec]
-
-		; sec, csec = div csec 100
-		MOV R0,-(R6)
-		MOV #100,-(R6)
-		MOV R1,-(R6)
-		JSR R7,div
-		ADD #6,R6
-
-		RTS	R7			; return;
-
-sec2minsec:
-		MOV	4(R6),R0	; R0 = sec
-		MOV 2(R6),R1	; R1 = &[min,sec]
-
-		; min, sec = div sec 60 
-		MOV R0,-(R6)
-		MOV #60,-(R6)
-		MOV R1,-(R6)
-		JSR R7,div
-		ADD #6,R6
-
-		RTS	R7			; return;
-
-div:
+;--------------------------------------------------------------------------
+; Divide a por b. Coloca o resultado no endereço apontado pelo 3º parâmetro 
+DIV:; Recebe na pilha
 		MOV	6(R6),R0	; R0 = a
 		MOV	4(R6),R1	; R1 = b
 		MOV	2(R6),R2	; R2 = &[quociente,resto]
@@ -324,13 +259,15 @@ div:
 		MOV R0,2(R2)	; resto = a
 		RTS	R7			; return;
 
-uint2str_aux: daw [2]
-uint2str:; uses R0, R1, R2, R3, R4
+;--------------------------------------------------------------------------
+; Transforma um inteiro sem sinal na sua representação em decimal com até n dígitos
+uint2str:; recebe na pilha
 		MOV	6(R6),R0	; R0 = src -> uint
 		MOV	4(R6),R1	; R1 = *dst -> byte array
 		MOV	2(R6),R2	; R2 = dst_len -> uint
 
-		MOV #uint2str_aux,R3
+		SUB #4,R6
+		MOv R6,R3		; aloca 2 endereços na pilha para o resultado das divisões
 
 		; R4 = *end
 		MOV R2, R4
@@ -341,22 +278,20 @@ uint2str:; uses R0, R1, R2, R3, R4
 		CMP R4,R1
 		BLT uint2str_end
 
-		; uint2str_aux = div src 10
-		MOV R1,-(R6)
-		MOV R2,-(R6)
-		MOV R3,-(R6)
-		MOV R4,-(R6)
-
+		; uint2str_aux = DIV src 10
+	MOV R1,-(R6)
+	MOV R2,-(R6)
+	MOV R3,-(R6)
+	MOV R4,-(R6)
 		MOV R0,-(R6)
 		MOV #10,-(R6)
 		MOV R3,-(R6)
-		JSR R7,div
+		JSR R7,DIV
 		ADD #6,R6
-
-		MOV (R6)+,R4
-		MOV (R6)+,R3
-		MOV (R6)+,R2
-		MOV (R6)+,R1
+	MOV (R6)+,R4
+	MOV (R6)+,R3
+	MOV (R6)+,R2
+	MOV (R6)+,R1
 
 		; R0 = quociente
 		MOV (R3), R0
@@ -370,29 +305,16 @@ uint2str:; uses R0, R1, R2, R3, R4
 		JMP uint2str_loop
 		
 	uint2str_end:
+		ADD #4,R6		; Free nos endereços alocados para resultado das divisões
 		RTS	R7
-
-
-;
-;**************************************************************************************************
-; Simula um processamento demorado
-Wait:
-		mov		#10,r0
-	WaitLoopR0:
-		mov		#30000,r1
-	WaitLoopR1:
-		sob		r1,WaitLoopR1
-		sob		r0,WaitLoopR0
-		rts		r7
 		
-;
+
 ;**************************************************************************************************
 ; Limpa o visor
-base_visor:		dab '000,00[0] 000,00[0] 000,00[0]  00:00'
 ClearDisplay:
 		MOV #36,-(R6)
 
-		MOV #base_visor,-(R6)
+		MOV #BASE_VISOR,-(R6)
 		DEC (R6)	;MOV para algum endereco do visor ignora o MSB, entao comecamos antes
 
 		MOV #VISOR,-(R6)
@@ -424,97 +346,99 @@ memcpy:
 ; Rotina que informa se algo foi digitado
 ; Retorna R0==0, se nada digitado; R0!=0, se algo digitado
 TeclaDisponivel:
-		and		#h7f,INTE			; IE = 0;
+		AND		#H7F,INTE			; IE = 0;
 		
-		clr		r0					; R0 = (prOut==ptIn ? FALSE:TRUE);
-		cmp		ptOut, ptIn
-		beq		TeclaDisponivel_1
-		mov		#1,r0
+		CLR		R0					; R0 = (prOut==ptIn ? FALSE:TRUE);
+		CMP		ptOut, ptIn
+		BEQ		TeclaDisponivel_1
+		MOV		#1,R0
 	TeclaDisponivel_1:
-		or		#h80,INTE			; IE = 1;
-		rts		r7
+		OR		#H80,INTE			; IE = 1;
+		RTS		R7
 		
 GetTecla:
-		and		#h7f,INTE			; IE = 0
+		AND		#h7f,INTE			; IE = 0
 		
-		mov		ptOut,r1			; r0 = *ptOut++
-		dec		r1
-		mov		TEC_BUFFER(r1),r0
-		add		#2,r1
+		MOV		ptOut,R1			; R0 = *ptOut++
+		DEC		R1
+		MOV		TEC_BUFFER(R1),R0
+		add		#2,R1
 		
-		and		#hff,r0				; r0 &= 0xFF
+		AND		#HFF,R0				; R0 &= 0xFF
 		
-		and		#h1f,r1				; ptOut = ptOut & 0x1F // loop around pointer
-		mov		r1,ptOut		
+		AND		#H1F,R1				; ptOut = ptOut & 0x1F // loop around pointer
+		MOV		R1,ptOut		
 		
-		or		#h80,INTE			; IE = 1
-		rts		r7
+		OR		#H80,INTE			; IE = 1
+		RTS		R7
 
 				
 ;
-;**************************************************************************************************
-; Rotina de INTERRUPÇÃO
-; Só será chamada se as interrupções estiverem habilitadas
+;--------------------------------------------------------------------------
+; Rotina de Interrupção
 ISR:
-		mov		r0,-(r6)	; Salva registradores
-		mov		r1,-(r6)
-		mov		r2,-(r6)
-		mov		r3,-(r6)
-		mov		r4,-(r6)
-		mov		r5,-(r6)
-	isr1:
-		mov		INTS,r0		; Verifica se é INT do TIMER
-		and		#1,r0
-		beq		isr2
-		JSR		r7,isr_tim	; Tratamento da INT do TIMER
-		and		#hFFFE,INTS	; Desliga bit de INT TIMER
-	isr2:
-		mov		INTS,r0		; Verifica se é INT do TECLADO
-		and		#2,r0
-		beq		isr3
-		JSR		r7,isr_tec	; Tratamento da INT do TECLADO
-		and		#hFFFD,INTS	; Desliga bit de INT TECLADO
-	isr3:
+		MOV		R0,-(R6)	; Salva registradores
+		MOV		R1,-(R6)
+		MOV		R2,-(R6)
+		MOV		R3,-(R6)
+		MOV		R4,-(R6)
+		MOV		R5,-(R6)
 
-		mov		(r6)+,r5	; Retorna os registradores da pilha
-		mov		(r6)+,r4
-		mov		(r6)+,r3
-		mov		(r6)+,r2
-		mov		(r6)+,r1
-		mov		(r6)+,r0
+	ISR1:
+		MOV		INTS,R0		; Verifica se é INT do TIMER
+		AND		#1,R0
+		BEQ		ISR2
+		JSR		R7,ISR_TIM	; Tratamento da INT do TIMER
+		AND		#hFFFE,INTS	; Desliga bit de INT TIMER
 
-		rti					; Return From Interrupt
+	ISR2:
+		MOV		INTS,R0		; Verifica se é INT do TECLADO
+		AND		#2,R0
+		BEQ		ISR_end
+		JSR		R7,isr_tec	; Tratamento da INT do TECLADO
+		AND		#hFFFD,INTS	; Desliga bit de INT TECLADO
 
+	ISR_end:
+		MOV		(R6)+,R5	; Retorna os registradores da pilha
+		MOV		(R6)+,R4
+		MOV		(R6)+,R3
+		MOV		(R6)+,R2
+		MOV		(R6)+,R1
+		MOV		(R6)+,R0
 
+		RTI					; Return From Interrupt
+
+;--------------------------------------------------------------------------
 ; Tratamento das interrupções de teclado
 isr_tec:
-		tst		TECST				; if (Tecla está disponivel?) {
-		beq		isr_tec_end
+		TST		TECST				; if (Tecla está disponivel?) {
+		BEQ		isr_tec_end
 		
-		mov		ptIn,r2				; 		p = (in+1)&0x1F
-		inc		r2
-		and		#h1F,r2
-		cmp		r2,ptOut			; 		if (p!=out) { // Verifica se o BUFFER ESTA CHEIO
-		beq		isr_tec_2
+		MOV		ptIn,R2				; 		p = (in+1)&0x1F
+		INC		R2
+		AND		#h1F,R2
+		CMP		R2,ptOut			; 		if (p!=out) { // Verifica se o BUFFER ESTA CHEIO
+		BEQ		isr_tec_2
 		
-		mov		ptIn,r1				;				*in = TECLA
-		dec		r1
-		mov		TEC_BUFFER(r1),r0
-		and		#hFF00,r0
-		or		TECDT,r0
-		mov		r0,TEC_BUFFER(r1)
+		MOV		ptIn,R1				;				*in = TECLA
+		DEC		R1
+		MOV		TEC_BUFFER(R1),R0
+		AND		#hFF00,R0
+		OR		TECDT,R0
+		MOV		R0,TEC_BUFFER(R1)
 		
-		mov		r2,ptIn				;				in = p
+		MOV		R2,ptIn				;				in = p
 									; 		}
 
 	isr_tec_2:
-		clr 	TECST				;
+		CLR 	TECST				;
 	
 	isr_tec_end:	
-		rts	r7						; }
+		RTS	R7						; }
 	
-
-isr_tim:
+;--------------------------------------------------------------------------
+;Tratamento das interrupções de timer
+ISR_TIM:
 	ISR_TIM_TOTAL:
 		DEC TICKS_TIL_SEC
 		BGT ISR_TIM_TOTAL_END
@@ -541,7 +465,7 @@ isr_tim:
 		ADD #2,R6
 
 	isr_tim_end:
-		RTS	r7
+		RTS	R7
 
 ISR_UPDATE_COUNTER:
 		MOV 2(R6),R0
@@ -567,23 +491,63 @@ ISR_UPDATE_COUNTER:
 		CLR 2(R2)
 		INC (R2)
 
-
 	ISR_UPDATE_COUNTER_END:
 		RTS R7
 
-; VAR
+;--------------------------------------------------------------------------
+;Reseta valores das variáveis usadas pelo programa
+RESET_VARS:
+	CLR ptIn
+	CLR ptOut
+	MOV #100,TICKS_TIL_SEC
+	CLR min_since_start
+	CLR sec_since_start
+
+	MOV #time_since_tec,R0
+	MOV #6,R1
+	JSR R7,RESET_VAR
+
+	MOV #laps,R0
+	MOV #3,R1
+	JSR R7,RESET_VAR
+
+	MOV #states,R0
+	MOV #3,R1
+	JSR R7,RESET_VAR
+
+	RTS R7
+
+RESET_VAR:;R0 = start, R1 = len (bytes/2); limpa de 2 em dois bytes
+	CLR (R0)+
+	DEC R1
+	BGT RESET_VAR
+	RTS R7
+	
+
+;==========================================================================
+; Variáveis
+
+ptIn:				dw	0
+ptOut:				dw	0
+TEC_BUFFER:			dab	[32]
+
 TICKS_TIL_SEC:		dw	0
-min_since_start:	dw  49	; Minutos completos desde o início do programa
-sec_since_start: 	dw	34	; Segundos deste o último minuto completo (sec % 60)
+min_since_start:	dw  0	; Minutos completos desde o início do programa
+sec_since_start: 	dw	0	; Segundos deste o último minuto completo (sec % 60)
 
 time_since_tec: 	daw [6] ; Par (segundo,centesimos), 1 para cada cronômetro
 laps:				daw	[3]	; Quantidade de voltas, 1 para cada cronomêtro
 states:				daw [3] ; Estado dos contadores: S_WAIT (inicial), S_SHOW, S_FROZEN
-							; 
+
+;==========================================================================
+; Constantes
+
+;--------------------------------------------------------------------------
 ; Máscaras para obter informações sobre os estados:
 C_UPDATE_COUNTER:	dw 1	; 0000000000000001
 C_UPDATE_VISOR:		dw 2	; 0000000000000010
 
+;--------------------------------------------------------------------------
 ; Estados
 ; Regra de criação:
 ;		byte menos significativo é o resultado da combinação das máscaras de informações sobre os estados
@@ -592,6 +556,15 @@ S_WAIT:				dw H0000; 00000000 00000000
 S_SHOW:				dw H0103; 00000001 00000011
 S_FROZEN:			dw H0201; 00000010 00000001
 
-ptIn:				dw	0
-ptOut:				dw	0
-TEC_BUFFER:			dab	[32]
+;--------------------------------------------------------------------------
+; Visor "vazio"
+BASE_VISOR:			dab '000,00[0] 000,00[0] 000,00[0]  00:00'
+
+;--------------------------------------------------------------------------
+; Posição onde mostrar cada cronometro
+; 65500 + 0, 65500 + 10, 65500 + 20
+TIMER_SEC_POSITION:		daw 65500,65510,65520
+; 65500 + 4, 65500 + 14, 65500 + 24
+TIMER_CSEC_POSITION: 	daw 65504,65514,65524
+; 65500 + 7, 65500 + 17, 65500 + 27
+TIMER_LAP_POSITION: 	daw 65507,65517,65527
