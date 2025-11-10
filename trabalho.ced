@@ -263,51 +263,40 @@ memcpy:
 		JMP memcpy_loop
 	memcpy_end:
 		RTS	R7
-; ;
-; ;**************************************************************************************************
-; ; Rotinas para a manipulação do hardware e interrupção (se houver) do teclado
-; ; TeclaDisponivel	-> Rotina que informa se algo foi digitado
-; ; GetTecla			-> Rotina que retorna a tecla digitada
+;
+;**************************************************************************************************
+; Rotinas para a manipulação do hardware e interrupção (se houver) do teclado
+; TeclaDisponivel	-> Rotina que informa se algo foi digitado
+; GetTecla			-> Rotina que retorna a tecla digitada
 
-; ; <<2>> Configuração da leitura de teclado
-
-; ;
-; ; Rotina que informa se algo foi digitado
-; ; Retorna R0==0, se nada digitado; R0!=0, se algo digitado
-; TeclaDisponivel:	jmp		TeclaDisponivel_2
-
-; ; Rotina que retorna a tecla digitada
-; GetTecla:			jmp		GetTecla_2
-
-
-; ; Versão 2 das funções
-; TeclaDisponivel_2:
-; 		and		#h7f,INTE			; IE = 0;
+; Rotina que informa se algo foi digitado
+; Retorna R0==0, se nada digitado; R0!=0, se algo digitado
+TeclaDisponivel:
+		and		#h7f,INTE			; IE = 0;
 		
-; 		clr		r0					; R0 = (prOut==ptIn ? FALSE:TRUE);
-; 		cmp		ptOut, ptIn
-; 		beq		TD_2_1
-; 		mov		#1,r0
-; TD_2_1:
-
-; 		or		#h80,INTE			; IE = 1;
-; 		rts		r7
+		clr		r0					; R0 = (prOut==ptIn ? FALSE:TRUE);
+		cmp		ptOut, ptIn
+		beq		TeclaDisponivel_1
+		mov		#1,r0
+TeclaDisponivel_1:
+		or		#h80,INTE			; IE = 1;
+		rts		r7
 		
-; GetTecla_2:
-; 		and		#h7f,INTE			; IE = 0
+GetTecla:
+		and		#h7f,INTE			; IE = 0
 		
-; 		mov		ptOut,r1			; r0 = *ptOut++
-; 		dec		r1
-; 		mov		TEC_BUFFER(r1),r0
-; 		add		#2,r1
+		mov		ptOut,r1			; r0 = *ptOut++
+		dec		r1
+		mov		TEC_BUFFER(r1),r0
+		add		#2,r1
 		
-; 		and		#hff,r0				; r0 &= 0xFF
+		and		#hff,r0				; r0 &= 0xFF
 		
-; 		and		#h1f,r1				; ptOut = ptOut & 0x1F // loop around pointer
-; 		mov		r1,ptOut		
+		and		#h1f,r1				; ptOut = ptOut & 0x1F // loop around pointer
+		mov		r1,ptOut		
 		
-; 		or		#h80,INTE			; IE = 1
-; 		rts		r7
+		or		#h80,INTE			; IE = 1
+		rts		r7
 
 				
 ;
@@ -374,7 +363,6 @@ isr_tec_end:
 	
 
 isr_tim:
-
 ISR_TIM_TOTAL:
 		DEC TICKS_TIL_SEC
 		BGT ISR_TIM_TOTAL_END
@@ -387,10 +375,50 @@ ISR_TIM_TOTAL:
 		INC min_since_start
 		CLR	sec_since_start
 ISR_TIM_TOTAL_END:
+ISR_TIM_UPDATE_COUNTER:
+		MOV #0,-(R6)
+		JSR R7,ISR_UPDATE_COUNTER
+		ADD #2,R6
+		
+		MOV #1,-(R6)
+		JSR R7,ISR_UPDATE_COUNTER
+		ADD #2,R6
+		
+		MOV #2,-(R6)
+		JSR R7,ISR_UPDATE_COUNTER
+		ADD #2,R6
 
 isr_tim_end:
-		rts	r7
+		RTS	r7
+
+ISR_UPDATE_COUNTER:
+		MOV 2(R6),R0
+		ASL R0		; R0 = index * 2
 		
+		MOV #states,R2
+		ADD R0,R2
+		MOV (R2),R2
+
+		AND C_UPDATE_COUNTER,R2
+		BEQ ISR_UPDATE_COUNTER_END
+
+		MOV R0,R1
+		ASL R1		; R1 = index * 4
+
+		MOV #time_since_tec,R2
+		ADD R1,R2
+
+		INC 2(R2)
+		CMP 2(R2),#100
+		BLT ISR_UPDATE_COUNTER_END
+
+		CLR 2(R2)
+		INC (R2)
+
+
+ISR_UPDATE_COUNTER_END:
+		RTS R7
+
 ; VAR
 TICKS_TIL_SEC:		dw	0
 min_since_start:	dw  49	; Minutos completos desde o início do programa
@@ -398,16 +426,16 @@ sec_since_start: 	dw	34	; Segundos deste o último minuto completo (sec % 60)
 
 time_since_tec: 	daw 28,12,66,66,53,64 ; Contador, em centésimos de segundo, 1 para cada cronômetro
 laps:				daw	[3]	; Quantidade de voltas, 1 para cada cronomêtro
-states:				daw [3] ; Estado dos contadores: S_WAIT, S_SHOW, S_FROZEN
+states:				daw 3,3,3  ; Estado dos contadores: S_WAIT, S_SHOW, S_FROZEN
 							; 
 ; Máscaras para obter informações sobre os estados:
 C_UPDATE_COUNTER:	dw 1	; 0000000000000001
 C_UPDATE_VISOR:		dw 2	; 0000000000000010
 
 ; Estados
-S_WAIT:				dw 1	; 0100000000000000
-S_SHOW:				dw 2	; 1000000000000011
-S_FROZEN:			dw 4	; 1100000000000010
+S_WAIT:				dw H4000; 0100000000000000
+S_SHOW:				dw H8003; 1000000000000011
+S_FROZEN:			dw HC002; 1100000000000010
 
 ptIn:				dw	0
 ptOut:				dw	0
